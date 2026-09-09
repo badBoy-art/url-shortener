@@ -65,37 +65,36 @@ MYSQL_DB=study MYSQL_USER=root MYSQL_PASSWORD=zhaoZ1230 mvn spring-boot:run
 ## API
 
 | 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/api/v1/links` | 创建短链，按 IP 限流（默认 10 次/秒） |
-| GET | `/api/v1/links/{code}` | 查询短链信息 |
-| DELETE | `/api/v1/links/{code}` | 删除（需 JWT 或 `X-API-Key`，访问日志保留） |
-| GET | `/api/v1/links/{code}/stats` | 单链统计：总点击、今日/昨日/近 7 天/本月 PV/UV、分时 PV |
-| GET | `/api/v1/stats/overview` | 全局统计（需 JWT 或 `X-API-Key`） |
+|---|---|---|---|
+| POST | `/api/url` | 创建短链，按 IP 限流（默认 10 次/秒） |
+| GET | `/api/url/{code}` | 查询短链信息 |
+| DELETE | `/api/url/{code}` | 删除（需 JWT 或 `X-API-Key`，访问日志保留） |
+| PUT | `/api/url/{code}/change_state` | 启用/停用短链（需 JWT 或 `X-API-Key`） |
+| GET | `/api/url/{code}/stats` | 单链统计：总点击、今日/昨日/近 7 天/本月 PV/UV、分时 PV |
+| GET | `/api/stats/overview` | 全局统计（需 JWT 或 `X-API-Key`） |
 | GET | `/{code}` | 302 跳转；密码保护返回验证页；打开方式不匹配 404；过期/停用 410 |
 | POST | `/{code}/verify` | 密码验证（限流保护） |
-| POST | `/api/v1/auth/login` | 管理员登录，成功返回 JWT；失败锁定（限流保护） |
-| GET | `/api/v1/admin/links` | 短链列表/关键词搜索（分页） |
-| PUT | `/api/v1/admin/links/{code}/status` | 启用/停用短链 |
-| DELETE | `/api/v1/admin/links/{code}` | 删除短链 |
-| GET | `/api/v1/admin/logs` | 访问日志查询（短码 + 时间范围，分页，含独立 IP 数） |
-| GET | `/api/v1/admin/logs/export` | 访问日志导出 Excel（.xlsx） |
-| GET/POST | `/api/v1/admin/users` | 管理员账号列表 / 新增 |
-| PUT | `/api/v1/admin/users/{account}/password` | 重置管理员密码 |
+| POST | `/api/login` | 管理员登录，成功返回 JWT；失败锁定（限流保护） |
+| GET | `/api/urls` | 短链列表/关键词搜索（分页，需 JWT 或 `X-API-Key`） |
+| GET | `/api/logs` | 访问日志查询（短码 + 时间范围，分页，含独立 IP 数） |
+| GET | `/api/logs/export` | 访问日志导出 Excel（.xlsx） |
+| GET/POST | `/api/account` | 管理员账号列表 / 新增（需 JWT 或 `X-API-Key`） |
+| PUT | `/api/account/{account}/update` | 重置管理员密码（需 JWT 或 `X-API-Key`） |
 | GET | `/health` `/ready` | LB 探活 |
 
-> 所有 `/api/v1/admin/**` 接口（及删除、全局统计）需 `Authorization: Bearer <token>` 或 `X-API-Key` 请求头。
+> 以上 `/api/*` 管理接口（除创建与查询外）需 `Authorization: Bearer <token>` 或 `X-API-Key` 请求头。
 > 默认管理员：账号 `admin`，密码 `ohUrlShortener`（首次启动自动创建，可用 `APP_ADMIN_ACCOUNT`/`APP_ADMIN_PASSWORD` 覆盖，**生产必改**）。
 
 ### 管理员登录与 JWT
 
 ```bash
 # 登录获取 token（连续失败 5 次锁定 10 分钟，可配置）
-curl -X POST http://localhost/api/v1/auth/login \
+curl -X POST http://localhost/api/login \
   -H 'Content-Type: application/json' \
   -d '{"account":"admin","password":"ohUrlShortener"}'
 
 # 携带 token 调用管理接口
-curl -H 'Authorization: Bearer <token>' 'http://localhost/api/v1/admin/links?keyword=example'
+curl -H 'Authorization: Bearer <token>' 'http://localhost/api/urls?keyword=example'
 ```
 
 JWT 有效期默认 12 小时；令牌校验时实时核对账号启用状态，停用账号立即失效。
@@ -115,7 +114,7 @@ JWT 有效期默认 12 小时；令牌校验时实时核对账号启用状态，
 ### 创建示例
 
 ```bash
-curl -X POST http://localhost/api/v1/links \
+curl -X POST http://localhost/api/url \
   -H 'Content-Type: application/json' \
   -d '{
     "destUrl": "https://www.example.com/very/long/path?a=1",
@@ -172,7 +171,7 @@ Redis 故障自动降级（fail-open）：本地缓存 + MySQL 照常服务，�
 ### 限流与鉴权
 
 - 创建/密码验证/登录接口按 IP 滑动窗口限流（Redis ZSET + Lua，原子），默认 10 次/秒，超限 429 + Retry-After；Redis 故障时 fail-open
-- 管理接口（`/api/v1/admin/**`、删除、全局统计）鉴权：`X-API-Key`（常量时间比较）或 Bearer JWT（HS256，校验签名 + 账号启用状态）
+- 管理接口（`/api/*` 除创建与查询外、删除、全局统计）鉴权：`X-API-Key`（常量时间比较）或 Bearer JWT（HS256，校验签名 + 账号启用状态）
 - 登录失败锁定：同一账号或同一 IP 连续失败 5 次锁定 10 分钟（Redis 计数，可配置）；替代 ohUrlShortener 的图形验证码，Redis 故障时锁定失效但不阻断登录
 - 管理员密码 BCrypt 存储；默认账号 `admin`/`ohUrlShortener` 首次启动自动初始化
 

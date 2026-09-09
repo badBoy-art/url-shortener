@@ -19,13 +19,13 @@ public class StatsController {
 
     private final StatsService statsService;
 
-    @GetMapping("/api/v1/links/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}/stats")
+    @GetMapping("/api/url/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}/stats")
     @Operation(summary = "单链统计", description = "总点击、今日 PV/UV、今日 24 小时分时 PV")
     public ApiResponse<StatsResponse> linkStats(@PathVariable String code) {
         return ApiResponse.ok(statsService.linkStats(code));
     }
 
-    @GetMapping("/api/v1/stats/overview")
+    @GetMapping("/api/stats/overview")
     @ApiKeyRequired
     @Operation(summary = "全局统计（需 X-API-Key 请求头）")
     public ApiResponse<OverviewResponse> overview() {

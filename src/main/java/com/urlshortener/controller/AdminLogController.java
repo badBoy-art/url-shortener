@@ -24,7 +24,7 @@ import java.util.Map;
 
 @Tag(name = "管理端访问日志", description = "访问日志查询与 Excel 导出（需 JWT 或 X-API-Key）")
 @RestController
-@RequestMapping("/api/v1/admin/logs")
+@RequestMapping("/api/logs")
 @RequiredArgsConstructor
 public class AdminLogController {
 

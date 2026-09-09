@@ -23,7 +23,7 @@ import java.util.Map;
 
 @Tag(name = "管理员用户管理", description = "管理员账号列表、新增、重置密码（需 JWT 或 X-API-Key）")
 @RestController
-@RequestMapping("/api/v1/admin/users")
+@RequestMapping("/api/account")
 @RequiredArgsConstructor
 public class AdminUserController {
 
@@ -48,7 +48,7 @@ public class AdminUserController {
     }
 
     @Operation(summary = "重置管理员密码")
-    @PutMapping("/{account}/password")
+    @PutMapping("/{account}/update")
     public ApiResponse<Void> resetPassword(@PathVariable String account,
                                            @Valid @RequestBody ResetPasswordRequest request) {
         adminUserService.resetPassword(account, request);

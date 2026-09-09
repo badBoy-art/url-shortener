@@ -86,13 +86,13 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void adminEndpointsRequireAuth() {
-        assertThat(rest.getForEntity("/api/v1/admin/links", String.class).getStatusCode())
+        assertThat(rest.getForEntity("/api/urls", String.class).getStatusCode())
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
-        assertThat(rest.getForEntity("/api/v1/admin/users", String.class).getStatusCode())
+        assertThat(rest.getForEntity("/api/account", String.class).getStatusCode())
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
-        assertThat(rest.getForEntity("/api/v1/admin/logs", String.class).getStatusCode())
+        assertThat(rest.getForEntity("/api/logs", String.class).getStatusCode())
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
-        assertThat(rest.getForEntity("/api/v1/stats/overview", String.class).getStatusCode())
+        assertThat(rest.getForEntity("/api/stats/overview", String.class).getStatusCode())
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
@@ -100,18 +100,18 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
     void adminAccessAcceptsJwtAndApiKey() throws Exception {
         String token = tokenOf(login("admin", "ohUrlShortener", null));
 
-        ResponseEntity<String> withJwt = rest.exchange("/api/v1/admin/links", HttpMethod.GET,
+        ResponseEntity<String> withJwt = rest.exchange("/api/urls", HttpMethod.GET,
                 new HttpEntity<>(bearer(token)), String.class);
         assertThat(withJwt.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(dataOf(withJwt).has("total")).isTrue();
 
         HttpHeaders keyHeaders = new HttpHeaders();
         keyHeaders.set("X-API-Key", "test-key");
-        ResponseEntity<String> withKey = rest.exchange("/api/v1/admin/links", HttpMethod.GET,
+        ResponseEntity<String> withKey = rest.exchange("/api/urls", HttpMethod.GET,
                 new HttpEntity<>(keyHeaders), String.class);
         assertThat(withKey.getStatusCode()).isEqualTo(HttpStatus.OK);
 
-        assertThat(rest.exchange("/api/v1/stats/overview", HttpMethod.GET,
+        assertThat(rest.exchange("/api/stats/overview", HttpMethod.GET,
                 new HttpEntity<>(keyHeaders), String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
@@ -123,11 +123,11 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
                 "description", "beta-page")));
         String token = tokenOf(login("admin", "ohUrlShortener", null));
 
-        JsonNode all = dataOf(rest.exchange("/api/v1/admin/links?page=1&size=50", HttpMethod.GET,
+        JsonNode all = dataOf(rest.exchange("/api/urls?page=1&size=50", HttpMethod.GET,
                 new HttpEntity<>(bearer(token)), String.class));
         assertThat(all.get("total").asLong()).isGreaterThanOrEqualTo(2);
 
-        JsonNode hit = dataOf(rest.exchange("/api/v1/admin/links?keyword=keyword-hit", HttpMethod.GET,
+        JsonNode hit = dataOf(rest.exchange("/api/urls?keyword=keyword-hit", HttpMethod.GET,
                 new HttpEntity<>(bearer(token)), String.class));
         assertThat(hit.get("total").asLong()).isGreaterThanOrEqualTo(1);
         assertThat(hit.get("list").toString()).contains("admin-list-1");
@@ -138,13 +138,13 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
         String code = codeOf(create("https://www.example.com/switch-status"));
         String token = tokenOf(login("admin", "ohUrlShortener", null));
 
-        assertThat(rest.exchange("/api/v1/admin/links/" + code + "/status", HttpMethod.PUT,
+        assertThat(rest.exchange("/api/url/" + code + "/change_state", HttpMethod.PUT,
                 new HttpEntity<>(Map.of("enable", false), bearerJson(token)), String.class)
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(rest.getForEntity("/" + code, String.class).getStatusCode())
                 .isEqualTo(HttpStatus.GONE);
 
-        assertThat(rest.exchange("/api/v1/admin/links/" + code + "/status", HttpMethod.PUT,
+        assertThat(rest.exchange("/api/url/" + code + "/change_state", HttpMethod.PUT,
                 new HttpEntity<>(Map.of("enable", true), bearerJson(token)), String.class)
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(rest.getForEntity("/" + code, String.class).getStatusCode())
@@ -190,7 +190,7 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
 
         JsonNode logs = null;
         for (int i = 0; i < 30; i++) {
-            logs = dataOf(rest.exchange("/api/v1/admin/logs?code=" + code, HttpMethod.GET,
+            logs = dataOf(rest.exchange("/api/logs?code=" + code, HttpMethod.GET,
                     new HttpEntity<>(bearer(token)), String.class));
             if (logs.get("total").asLong() >= 2) {
                 break;
@@ -201,7 +201,7 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
         assertThat(logs.get("uniqueIpCount").asLong()).isGreaterThanOrEqualTo(2);
         assertThat(logs.get("list").size()).isGreaterThanOrEqualTo(2);
 
-        ResponseEntity<byte[]> export = rest.exchange("/api/v1/admin/logs/export?code=" + code,
+        ResponseEntity<byte[]> export = rest.exchange("/api/logs/export?code=" + code,
                 HttpMethod.GET, new HttpEntity<>(bearer(token)), byte[].class);
         assertThat(export.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(export.getHeaders().getContentType().toString()).contains("spreadsheetml");
@@ -216,26 +216,26 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
     void adminUserCrudFlow() throws Exception {
         String token = tokenOf(login("admin", "ohUrlShortener", null));
 
-        JsonNode users = dataOf(rest.exchange("/api/v1/admin/users", HttpMethod.GET,
+        JsonNode users = dataOf(rest.exchange("/api/account", HttpMethod.GET,
                 new HttpEntity<>(bearer(token)), String.class));
         assertThat(users.get("list").toString()).contains("admin");
 
-        ResponseEntity<String> created = rest.exchange("/api/v1/admin/users", HttpMethod.POST,
+        ResponseEntity<String> created = rest.exchange("/api/account", HttpMethod.POST,
                 new HttpEntity<>(Map.of("account", "auditor01", "password", "audit12345"),
                         bearerJson(token)), String.class);
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(dataOf(created).get("account").asText()).isEqualTo("auditor01");
 
-        assertThat(rest.exchange("/api/v1/admin/users", HttpMethod.POST,
+        assertThat(rest.exchange("/api/account", HttpMethod.POST,
                 new HttpEntity<>(Map.of("account", "auditor01", "password", "audit12345"),
                         bearerJson(token)), String.class)
                 .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 
-        assertThat(rest.exchange("/api/v1/admin/users/auditor01/password", HttpMethod.PUT,
+        assertThat(rest.exchange("/api/account/auditor01/update", HttpMethod.PUT,
                 new HttpEntity<>(Map.of("password", "newpass12345"), bearerJson(token)), String.class)
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
 
-        assertThat(rest.exchange("/api/v1/admin/users/ghostuser99/password", HttpMethod.PUT,
+        assertThat(rest.exchange("/api/account/ghostuser99/update", HttpMethod.PUT,
                 new HttpEntity<>(Map.of("password", "newpass12345"), bearerJson(token)), String.class)
                 .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
@@ -252,7 +252,7 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
 
         JsonNode stats = null;
         for (int i = 0; i < 30; i++) {
-            stats = dataOf(rest.getForEntity("/api/v1/links/" + code + "/stats", String.class));
+            stats = dataOf(rest.getForEntity("/api/url/" + code + "/stats", String.class));
             if (stats.get("todayPv").asLong() >= 1) {
                 break;
             }
@@ -268,7 +268,7 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
 
         JsonNode overview = null;
         for (int i = 0; i < 30; i++) {
-            overview = dataOf(rest.exchange("/api/v1/stats/overview", HttpMethod.GET,
+            overview = dataOf(rest.exchange("/api/stats/overview", HttpMethod.GET,
                     new HttpEntity<>(bearer(token)), String.class));
             if (overview.get("todayPv").asLong() >= 1) {
                 break;
@@ -301,14 +301,14 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
         if (extra != null) {
             headers.putAll(extra);
         }
-        return rest.exchange("/api/v1/auth/login", HttpMethod.POST,
+        return rest.exchange("/api/login", HttpMethod.POST,
                 new HttpEntity<>(Map.of("account", account, "password", password), headers), String.class);
     }
 
     private ResponseEntity<String> create(Map<String, Object> body) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        return rest.exchange("/api/v1/links", HttpMethod.POST,
+        return rest.exchange("/api/url", HttpMethod.POST,
                 new HttpEntity<>(body, headers), String.class);
     }
 

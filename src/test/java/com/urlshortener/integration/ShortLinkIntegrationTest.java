@@ -179,12 +179,12 @@ class ShortLinkIntegrationTest extends AbstractIntegrationTest {
     void deleteRequiresApiKey() throws Exception {
         String code = codeOf(create("https://www.example.com/to-delete"));
 
-        assertThat(rest.exchange("/api/v1/links/" + code, HttpMethod.DELETE,
+        assertThat(rest.exchange("/api/url/" + code, HttpMethod.DELETE,
                 HttpEntity.EMPTY, String.class).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("X-API-Key", "test-key");
-        ResponseEntity<String> deleted = rest.exchange("/api/v1/links/" + code, HttpMethod.DELETE,
+        ResponseEntity<String> deleted = rest.exchange("/api/url/" + code, HttpMethod.DELETE,
                 new HttpEntity<>(headers), String.class);
         assertThat(deleted.getStatusCode()).isEqualTo(HttpStatus.OK);
 
@@ -226,7 +226,7 @@ class ShortLinkIntegrationTest extends AbstractIntegrationTest {
         JsonNode stats = null;
         for (int i = 0; i < 30; i++) {
             stats = objectMapper.readTree(
-                    rest.getForEntity("/api/v1/links/" + code + "/stats", String.class).getBody());
+                    rest.getForEntity("/api/url/" + code + "/stats", String.class).getBody());
             if (stats.get("data").get("todayPv").asLong() >= 2
                     && stats.get("data").get("totalClicks").asLong() >= 2) {
                 break;
@@ -280,7 +280,7 @@ class ShortLinkIntegrationTest extends AbstractIntegrationTest {
     private ResponseEntity<String> create(Map<String, Object> body) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        return rest.exchange("/api/v1/links", HttpMethod.POST,
+        return rest.exchange("/api/url", HttpMethod.POST,
                 new HttpEntity<>(body, headers), String.class);
     }
 

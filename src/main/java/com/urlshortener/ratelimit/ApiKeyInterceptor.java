@@ -10,7 +10,7 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
- * 旧版管理接口（DELETE /api/v1/links/{code}、全局统计等 @ApiKeyRequired 标注的接口）
+ * 旧版管理接口（DELETE /api/url/{code}、PUT /api/url/{code}/change_state、全局统计等 @ApiKeyRequired 标注的接口）
  * 鉴权：X-API-Key 或 Bearer JWT 任一有效。
  */
 @Component

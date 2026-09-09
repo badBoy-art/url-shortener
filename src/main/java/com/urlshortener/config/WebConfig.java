@@ -20,7 +20,8 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(rateLimitInterceptor).addPathPatterns("/**");
         registry.addInterceptor(apiKeyInterceptor).addPathPatterns("/**");
-        // /api/v1/admin/** 统一要求管理鉴权（JWT 或 X-API-Key）
-        registry.addInterceptor(adminAuthInterceptor).addPathPatterns("/api/v1/admin/**");
+        // /api/* 下的管理接口统一要求鉴权（JWT 或 X-API-Key）
+        registry.addInterceptor(adminAuthInterceptor)
+                .addPathPatterns("/api/urls", "/api/logs/**", "/api/account/**", "/api/stats/overview");
     }
 }

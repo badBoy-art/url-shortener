@@ -36,7 +36,7 @@ class RateLimitIntegrationTest extends AbstractIntegrationTest {
         int passed = 0;
         int limited = 0;
         for (int i = 0; i < 12; i++) {
-            ResponseEntity<String> resp = rest.exchange("/api/v1/links", HttpMethod.POST,
+            ResponseEntity<String> resp = rest.exchange("/api/url", HttpMethod.POST,
                     new HttpEntity<>(Map.of("destUrl", "https://example.com/rl/" + i), headers),
                     String.class);
             if (resp.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS) {

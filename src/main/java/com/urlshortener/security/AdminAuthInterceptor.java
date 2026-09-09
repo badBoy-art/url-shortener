@@ -9,7 +9,7 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
- * 保护 /api/v1/admin/** 的鉴权拦截器：X-API-Key 或 Bearer JWT 任一有效。
+ * 保护 /api/urls、/api/logs/**、/api/account/**、/api/stats/overview 的鉴权拦截器：X-API-Key 或 Bearer JWT 任一有效。
  */
 @Component
 @RequiredArgsConstructor

@@ -3,8 +3,10 @@ package com.urlshortener.controller;
 import com.urlshortener.common.ApiResponse;
 import com.urlshortener.dto.CreateLinkRequest;
 import com.urlshortener.dto.LinkResponse;
+import com.urlshortener.dto.StatusUpdateRequest;
 import com.urlshortener.ratelimit.ApiKeyRequired;
 import com.urlshortener.ratelimit.RateLimit;
+import com.urlshortener.service.AdminLinkService;
 import com.urlshortener.service.ShortLinkService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,17 +16,19 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/links")
+@RequestMapping("/api/url")
 @RequiredArgsConstructor
 @Tag(name = "短链管理")
 public class LinkController {
 
     private final ShortLinkService shortLinkService;
+    private final AdminLinkService adminLinkService;
 
     @PostMapping
     @RateLimit
@@ -45,5 +49,13 @@ public class LinkController {
     public ApiResponse<Void> delete(@PathVariable String code) {
         shortLinkService.delete(code);
         return ApiResponse.ok();
+    }
+
+    @PutMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}/change_state")
+    @ApiKeyRequired
+    @Operation(summary = "启用/停用短链", description = "停用后访问返回 410，缓存同步失效")
+    public ApiResponse<LinkResponse> changeState(@PathVariable String code,
+                                                  @Valid @RequestBody StatusUpdateRequest request) {
+        return ApiResponse.ok(adminLinkService.setStatus(code, request.enable()));
     }
 }
