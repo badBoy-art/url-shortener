@@ -32,3 +32,13 @@ CREATE TABLE IF NOT EXISTS t_admin_user (
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_account (account)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS t_short_link_dest (
+    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    short_code VARCHAR(16)   NOT NULL COMMENT '短码',
+    label      VARCHAR(64)   NOT NULL COMMENT '目标标识（访问时通过 X-Dest-Label 请求头选择）',
+    dest_url   VARCHAR(2048) NOT NULL COMMENT '目标地址',
+    created_at DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_code_label (short_code, label),
+    KEY idx_code (short_code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;

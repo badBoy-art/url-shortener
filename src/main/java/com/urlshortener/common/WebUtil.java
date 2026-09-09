@@ -4,6 +4,9 @@ import jakarta.servlet.http.HttpServletRequest;
 
 public final class WebUtil {
 
+    /** 多目标短链选择请求头：值为创建短链时给每个 destUrl 指定的 label，匹配则跳转对应目标 */
+    public static final String DEST_LABEL_HEADER = "X-Dest-Label";
+
     private WebUtil() {
     }
 

@@ -4,11 +4,13 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.urlshortener.entity.ShortLink;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record LinkResponse(
         String shortCode,
         String shortUrl,
         String destUrl,
+        List<DestInfo> destinations,
         String description,
         boolean expired,
         Integer status,
@@ -19,10 +21,19 @@ public record LinkResponse(
 ) {
 
     public static LinkResponse from(ShortLink link, String baseUrl) {
+        return from(link, baseUrl, null);
+    }
+
+    public static LinkResponse from(ShortLink link, String baseUrl, String destUrlOverride) {
+        List<DestInfo> dests = link.getDestinations() == null ? null : link.getDestinations()
+                .entrySet().stream()
+                .map(e -> new DestInfo(e.getKey(), e.getValue()))
+                .toList();
         return new LinkResponse(
                 link.getShortCode(),
                 baseUrl + "/" + link.getShortCode(),
-                link.getDestUrl(),
+                destUrlOverride != null ? destUrlOverride : link.getDestUrl(),
+                dests,
                 link.getDescription(),
                 link.isExpired(LocalDateTime.now()),
                 link.getStatus() == null ? 1 : link.getStatus(),

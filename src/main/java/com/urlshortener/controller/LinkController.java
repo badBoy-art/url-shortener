@@ -1,6 +1,7 @@
 package com.urlshortener.controller;
 
 import com.urlshortener.common.ApiResponse;
+import com.urlshortener.common.WebUtil;
 import com.urlshortener.dto.CreateLinkRequest;
 import com.urlshortener.dto.LinkResponse;
 import com.urlshortener.dto.StatusUpdateRequest;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -32,15 +34,17 @@ public class LinkController {
 
     @PostMapping
     @RateLimit
-    @Operation(summary = "创建短链", description = "同一 destUrl 恒生成同一短码；可自定义短码、设置访问密码、备注与过期时间")
+    @Operation(summary = "创建短链", description = "同一 destUrl 恒生成同一短码；支持 destinations 多目标地址（每个目标一个 label，访问时用 X-Dest-Label 请求头选择）；"
+            + "可自定义短码、设置访问密码、备注与过期时间")
     public ApiResponse<LinkResponse> create(@Valid @RequestBody CreateLinkRequest request) {
         return ApiResponse.ok(shortLinkService.create(request));
     }
 
     @GetMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}")
-    @Operation(summary = "查询短链信息")
-    public ApiResponse<LinkResponse> info(@PathVariable String code) {
-        return ApiResponse.ok(shortLinkService.getInfo(code));
+    @Operation(summary = "查询短链信息", description = "多目标短链可通过 X-Dest-Label 请求头获取对应 destUrl（无匹配返回主目标）")
+    public ApiResponse<LinkResponse> info(@PathVariable String code,
+                                          @RequestHeader(value = WebUtil.DEST_LABEL_HEADER, required = false) String label) {
+        return ApiResponse.ok(shortLinkService.getInfo(code, label));
     }
 
     @DeleteMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}")

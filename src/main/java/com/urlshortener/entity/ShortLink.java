@@ -1,11 +1,13 @@
 package com.urlshortener.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Data
 @TableName("t_short_link")
@@ -17,6 +19,10 @@ public class ShortLink {
     private String shortCode;
 
     private String destUrl;
+
+    /** 多目标地址（label → destUrl），仅查询/缓存装载时填充，非表字段 */
+    @TableField(exist = false)
+    private Map<String, String> destinations;
 
     private String passwordHash;
 

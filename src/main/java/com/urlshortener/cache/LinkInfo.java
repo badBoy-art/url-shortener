@@ -3,6 +3,7 @@ package com.urlshortener.cache;
 import com.urlshortener.entity.ShortLink;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * 缓存与重定向所需的链接摘要，避免把完整实体放进缓存。
@@ -10,6 +11,7 @@ import java.time.LocalDateTime;
 public record LinkInfo(
         String code,
         String destUrl,
+        Map<String, String> destinations,
         String passwordHash,
         String description,
         Integer status,
@@ -21,15 +23,16 @@ public record LinkInfo(
 ) {
 
     public static LinkInfo from(ShortLink link) {
-        return new LinkInfo(link.getShortCode(), link.getDestUrl(), link.getPasswordHash(),
-                link.getDescription(), link.getStatus(), link.getOpenType(), link.getClickCount(),
-                link.getCreatedAt(), link.getUpdatedAt(), link.getExpiredAt());
+        return new LinkInfo(link.getShortCode(), link.getDestUrl(), link.getDestinations(),
+                link.getPasswordHash(), link.getDescription(), link.getStatus(), link.getOpenType(),
+                link.getClickCount(), link.getCreatedAt(), link.getUpdatedAt(), link.getExpiredAt());
     }
 
     public ShortLink toEntity() {
         ShortLink link = new ShortLink();
         link.setShortCode(code);
         link.setDestUrl(destUrl);
+        link.setDestinations(destinations);
         link.setPasswordHash(passwordHash);
         link.setDescription(description);
         link.setStatus(status);

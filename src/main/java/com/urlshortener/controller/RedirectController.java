@@ -39,9 +39,11 @@ public class RedirectController {
 
     @GetMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}")
     @Operation(summary = "访问短链",
-            description = "302 跳转目标地址；密码保护链接返回验证页；打开方式不匹配返回提示页；过期/停用返回 410")
+            description = "302 跳转目标地址；多目标短链可用 X-Dest-Label 请求头选择对应 destUrl（无匹配回退主目标）；"
+                    + "密码保护链接返回验证页；打开方式不匹配返回提示页；过期/停用返回 410")
     public ResponseEntity<?> redirect(@PathVariable String code, HttpServletRequest request) {
         ShortLink link = validateLink(code);
+        String destUrl = redirectService.resolveDestUrl(link, request);
         if (link.getPasswordHash() != null) {
             return ResponseEntity.ok().contentType(MediaType.TEXT_HTML)
                     .body(render("verify.html", code, null));
@@ -50,22 +52,23 @@ public class RedirectController {
             return unsupportedPage(code);
         }
         redirectService.recordVisit(code, request);
-        return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(link.getDestUrl())).build();
+        return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(destUrl)).build();
     }
 
     @PostMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}/verify")
     @RateLimit
-    @Operation(summary = "密码验证", description = "验证页表单提交，密码正确则 302 跳转")
+    @Operation(summary = "密码验证", description = "验证页表单提交，密码正确则 302 跳转；支持 X-Dest-Label 请求头选择多目标")
     public ResponseEntity<?> verify(@PathVariable String code,
                                     @RequestParam("password") String password,
                                     HttpServletRequest request) {
         ShortLink link = validateLink(code);
+        String destUrl = redirectService.resolveDestUrl(link, request);
         if (link.getPasswordHash() == null || passwordEncoder.matches(password, link.getPasswordHash())) {
             if (openTypeRejected(link, request)) {
                 return unsupportedPage(code);
             }
             redirectService.recordVisit(code, request);
-            return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(link.getDestUrl())).build();
+            return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(destUrl)).build();
         }
         return ResponseEntity.badRequest().contentType(MediaType.TEXT_HTML)
                 .body(render("verify.html", code, "密码错误，请重试"));
