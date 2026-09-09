@@ -1,0 +1,96 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: url-shortener
+  # Java 21 虚拟线程：Tomcat 每请求一线程，高并发下吞吐更高、资源占用更低
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # characterEncoding 用 UTF-8：Connector/J 8+ 会自动映射为 utf8mb4，直接写 utf8mb4 会报 Unsupported character encoding
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:url_shortener}?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&rewriteBatchedStatements=true&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123}
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 3000
+      validation-timeout: 2000
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+app:
+  # 生成短链时对外展示的基础地址（生产环境配成公网域名）
+  base-url: ${APP_BASE_URL:http://localhost:8080}
+  # 管理接口鉴权密钥（删除、全局统计等），生产环境务必通过环境变量覆盖
+  api-key: ${APP_API_KEY:change-me-admin-key}
+  short-code:
+    # 短码长度（Base58 字符），越长冲突概率越低
+    length: 6
+    # 冲突时加盐重试次数上限
+    max-retries: 5
+  cache:
+    # 本地 Caffeine 缓存：热点短链直接内存命中
+    local-ttl-minutes: 10
+    local-max-size: 10000
+    # Redis 二级缓存 TTL
+    redis-ttl-hours: 24
+  rate-limit:
+    # 创建接口按 IP 限流（滑动窗口），默认 10 次/秒
+    limit: 10
+    window-seconds: 1
+  access-log:
+    # 访问日志异步批量写入参数
+    flush-interval-ms: 1000
+    batch-size: 500
+    queue-capacity: 100000
+  auth:
+    # JWT 签名密钥（HS256 要求至少 32 字节），生产环境务必通过环境变量覆盖
+    jwt-secret: ${APP_JWT_SECRET:url-shortener-jwt-secret-please-change-me}
+    # JWT 有效期（小时）
+    jwt-expire-hours: 12
+    # 登录失败锁定：同一账号/同一 IP 连续失败 N 次后锁定
+    login-max-fails: 5
+    login-lock-minutes: 10
+  admin:
+    # 首次启动（管理员表为空）时自动创建的管理员账号
+    init-account: ${APP_ADMIN_ACCOUNT:admin}
+    init-password: ${APP_ADMIN_PASSWORD:ohUrlShortener}
+    # 访问日志 Excel 导出行数上限
+    export-max-rows: 50000
+  # 点击计数从 Redis 批量回写 DB 的间隔
+  count-flush-interval-ms: 30000

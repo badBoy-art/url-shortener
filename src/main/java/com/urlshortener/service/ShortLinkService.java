@@ -1,0 +1,222 @@
+package com.urlshortener.service;
+
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.urlshortener.cache.LinkCacheService;
+import com.urlshortener.cache.LinkInfo;
+import com.urlshortener.common.Base58;
+import com.urlshortener.common.BusinessException;
+import com.urlshortener.config.AppProperties;
+import com.urlshortener.config.RedisStateHolder;
+import com.urlshortener.dto.CreateLinkRequest;
+import com.urlshortener.dto.LinkResponse;
+import com.urlshortener.entity.ShortLink;
+import com.urlshortener.mapper.ShortLinkMapper;
+import com.urlshortener.service.codec.ShortCodeGenerator;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.Optional;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class ShortLinkService {
+
+    private final ShortLinkMapper mapper;
+    private final ShortCodeGenerator codeGenerator;
+    private final LinkCacheService cacheService;
+    private final AppProperties props;
+    private final StringRedisTemplate redis;
+    private final RedisStateHolder redisState;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+    @Transactional
+    public LinkResponse create(CreateLinkRequest request) {
+        String destUrl = request.destUrl().trim();
+        validateUrl(destUrl);
+        if (request.expiredAt() != null && request.expiredAt().isBefore(LocalDateTime.now())) {
+            throw BusinessException.badRequest("过期时间不能早于当前时间");
+        }
+        if (request.shortCode() != null && !request.shortCode().isBlank()) {
+            return createWithCustomCode(request, destUrl);
+        }
+        return createWithGeneratedCode(request, destUrl);
+    }
+
+    private LinkResponse createWithGeneratedCode(CreateLinkRequest request, String destUrl) {
+        String urlKey = codeGenerator.urlCacheKey(destUrl);
+        ShortLink existing = findByCodeFromUrlCache(urlKey);
+        if (existing != null && existing.getDestUrl().equals(destUrl)) {
+            return LinkResponse.from(existing, props.baseUrl());
+        }
+        for (int attempt = 0; attempt <= codeGenerator.maxRetries(); attempt++) {
+            String code = codeGenerator.generate(destUrl, attempt);
+            ShortLink byCode = findLinkByCode(code);
+            if (byCode != null) {
+                if (byCode.getDestUrl().equals(destUrl)) {
+                    cacheUrlCode(urlKey, code);
+                    return LinkResponse.from(byCode, props.baseUrl());
+                }
+                // 真冲突：该码被其它 URL 占用，换盐重试
+                continue;
+            }
+            try {
+                ShortLink link = insert(request, destUrl, code);
+                cacheUrlCode(urlKey, code);
+                return LinkResponse.from(link, props.baseUrl());
+            } catch (DuplicateKeyException e) {
+                // 并发下同 URL 抢先插入：幂等返回已有结果
+                ShortLink winner = findLinkByCode(code);
+                if (winner != null && winner.getDestUrl().equals(destUrl)) {
+                    cacheUrlCode(urlKey, code);
+                    return LinkResponse.from(winner, props.baseUrl());
+                }
+            }
+        }
+        throw BusinessException.internal("短码生成冲突次数超限，请重试");
+    }
+
+    private LinkResponse createWithCustomCode(CreateLinkRequest request, String destUrl) {
+        String code = request.shortCode().trim();
+        if (!Base58.isValidCode(code)) {
+            throw BusinessException.badRequest("短码只能为 4-16 位 Base58 字符（不含 0、O、I、l）");
+        }
+        String urlKey = codeGenerator.urlCacheKey(destUrl);
+        ShortLink byCode = findLinkByCode(code);
+        if (byCode != null) {
+            if (byCode.getDestUrl().equals(destUrl)) {
+                cacheUrlCode(urlKey, code);
+                return LinkResponse.from(byCode, props.baseUrl());
+            }
+            throw BusinessException.conflict("短码 " + code + " 已被占用");
+        }
+        try {
+            ShortLink link = insert(request, destUrl, code);
+            cacheUrlCode(urlKey, code);
+            return LinkResponse.from(link, props.baseUrl());
+        } catch (DuplicateKeyException e) {
+            throw BusinessException.conflict("短码 " + code + " 已被占用");
+        }
+    }
+
+    private ShortLink insert(CreateLinkRequest request, String destUrl, String code) {
+        ShortLink link = new ShortLink();
+        link.setShortCode(code);
+        link.setDestUrl(destUrl);
+        if (request.password() != null && !request.password().isBlank()) {
+            link.setPasswordHash(passwordEncoder.encode(request.password()));
+        }
+        link.setDescription(request.description());
+        link.setExpiredAt(request.expiredAt());
+        link.setStatus(1);
+        link.setOpenType(request.openType() == null ? 0 : request.openType());
+        link.setCreatedAt(LocalDateTime.now());
+        link.setUpdatedAt(LocalDateTime.now());
+        mapper.insert(link);
+        putCacheAfterCommit(link);
+        return link;
+    }
+
+    /** 事务提交后再写缓存，避免回滚导致缓存脏数据 */
+    private void putCacheAfterCommit(ShortLink link) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    cacheService.put(LinkInfo.from(link));
+                }
+            });
+        } else {
+            cacheService.put(LinkInfo.from(link));
+        }
+    }
+
+    public Optional<ShortLink> findOptionalByCode(String code) {
+        return cacheService.get(code, () -> {
+            ShortLink link = mapper.selectOne(
+                    Wrappers.<ShortLink>lambdaQuery().eq(ShortLink::getShortCode, code));
+            return link == null ? null : LinkInfo.from(link);
+        }).map(LinkInfo::toEntity);
+    }
+
+    public ShortLink getOrThrow(String code) {
+        return findOptionalByCode(code)
+                .orElseThrow(() -> BusinessException.notFound("短链 " + code + " 不存在"));
+    }
+
+    public LinkResponse getInfo(String code) {
+        return LinkResponse.from(getOrThrow(code), props.baseUrl());
+    }
+
+    public void delete(String code) {
+        ShortLink link = getOrThrow(code);
+        mapper.delete(Wrappers.<ShortLink>lambdaQuery().eq(ShortLink::getShortCode, code));
+        cacheService.evict(code);
+        evictUrlCode(link.getDestUrl());
+    }
+
+    private ShortLink findLinkByCode(String code) {
+        return findOptionalByCode(code).orElse(null);
+    }
+
+    private ShortLink findByCodeFromUrlCache(String urlKey) {
+        if (!redisState.isUp()) {
+            return null;
+        }
+        try {
+            String code = redis.opsForValue().get("url:code:" + urlKey);
+            if (code != null) {
+                return findLinkByCode(code);
+            }
+        } catch (Exception e) {
+            redisState.markDown(e);
+        }
+        return null;
+    }
+
+    private void cacheUrlCode(String urlKey, String code) {
+        if (!redisState.isUp()) {
+            return;
+        }
+        try {
+            redis.opsForValue().set("url:code:" + urlKey, code, Duration.ofHours(props.cache().redisTtlHours()));
+        } catch (Exception e) {
+            redisState.markDown(e);
+        }
+    }
+
+    private void evictUrlCode(String destUrl) {
+        if (!redisState.isUp()) {
+            return;
+        }
+        try {
+            redis.delete("url:code:" + codeGenerator.urlCacheKey(destUrl));
+        } catch (Exception e) {
+            redisState.markDown(e);
+        }
+    }
+
+    private void validateUrl(String url) {
+        try {
+            URI uri = new URI(url);
+            String scheme = uri.getScheme();
+            if (scheme == null || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+                    || uri.getHost() == null) {
+                throw BusinessException.badRequest("仅支持 http/https 协议的有效地址");
+            }
+        } catch (URISyntaxException e) {
+            throw BusinessException.badRequest("目标地址格式非法");
+        }
+    }
+}

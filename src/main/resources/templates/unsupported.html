@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>不支持的打开方式 - 短链服务</title>
+    <style>
+        body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+               display: flex; align-items: center; justify-content: center; min-height: 100vh;
+               margin: 0; background: #f5f6f8; color: #333; }
+        .card { background: #fff; padding: 48px 56px; border-radius: 12px; text-align: center;
+                box-shadow: 0 4px 24px rgba(0,0,0,.08); max-width: 480px; }
+        .status { font-size: 72px; font-weight: 700; color: #e6a23c; margin-bottom: 8px; }
+        h1 { font-size: 20px; margin: 0 0 12px; }
+        p { color: #888; font-size: 14px; margin: 4px 0; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <div class="status">404</div>
+    <h1>不支持的打开方式</h1>
+    <p>该短链接设置了指定客户端打开方式，当前环境不允许访问。</p>
+    <p style="margin-top:12px">短码：{{CODE}}</p>
+</div>
+</body>
+</html>

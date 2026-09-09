@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>短链密码验证</title>
+    <style>
+        body {
+            font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f5f6fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, .08);
+            padding: 40px 36px;
+            width: 340px;
+            text-align: center;
+        }
+        .card h1 {
+            font-size: 20px;
+            margin: 0 0 8px;
+            color: #2d3436;
+        }
+        .card p {
+            color: #636e72;
+            font-size: 14px;
+            margin: 0 0 24px;
+        }
+        input[type="password"] {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 12px 14px;
+            border: 1px solid #dfe6e9;
+            border-radius: 8px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color .2s;
+        }
+        input[type="password"]:focus {
+            border-color: #0984e3;
+        }
+        button {
+            width: 100%;
+            margin-top: 16px;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: #0984e3;
+            color: #fff;
+            font-size: 15px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0873c4;
+        }
+        .error {
+            margin-bottom: 14px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            background: #ffecec;
+            color: #d63031;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>该短链受密码保护</h1>
+    <p>请输入访问密码后继续</p>
+    {{ERROR}}
+    <form action="/{{CODE}}/verify" method="post">
+        <input type="password" name="password" placeholder="访问密码" autofocus required>
+        <button type="submit">验证并跳转</button>
+    </form>
+</div>
+</body>
+</html>
