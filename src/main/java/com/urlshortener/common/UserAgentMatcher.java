@@ -9,10 +9,13 @@ import java.util.regex.Pattern;
  */
 public final class UserAgentMatcher {
 
-    private static final Pattern ANDROID = Pattern.compile("(?i)Android/[\\d.]+");
-    private static final Pattern IPHONE = Pattern.compile("(?i)iPhone/[\\d.]+");
-    private static final Pattern IPAD = Pattern.compile("(?i)iPad/[\\d.]+");
-    private static final Pattern TABLET = Pattern.compile("(?i)(iPad/[\\d.]+|Macintosh.*Mobile/[\\d.]+)");
+    // 兼容新旧 UA 格式：Android/4.1.2（旧）与 Android 14（新）
+    private static final Pattern ANDROID = Pattern.compile("(?i)Android[/ ][\\d.]+");
+    // 兼容新旧 UA 格式：iPhone/12.1（旧）与 iPhone; CPU iPhone OS 17_5（新）
+    private static final Pattern IPHONE = Pattern.compile("(?i)iPhone[/;]");
+    // 兼容新旧 UA 格式：iPad/17.0（旧）与 iPad; CPU OS 17_5（新）
+    private static final Pattern IPAD = Pattern.compile("(?i)iPad[/;]");
+    private static final Pattern TABLET = Pattern.compile("(?i)(iPad[/;]|Macintosh.*Mobile/[\\d.]+)");
     private static final Pattern WECHAT = Pattern.compile("(?i)MicroMessenger/[\\d.]+");
     private static final Pattern DINGTALK = Pattern.compile("(?i)DingTalk/[\\d.]+");
     private static final Pattern SAFARI = Pattern.compile("(?i)Version/[\\d.]+ Safari/[\\d.]+");
