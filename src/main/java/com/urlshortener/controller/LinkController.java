@@ -11,6 +11,7 @@ import com.urlshortener.service.AdminLinkService;
 import com.urlshortener.service.ShortLinkService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,7 +20,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,17 +34,16 @@ public class LinkController {
 
     @PostMapping
     @RateLimit
-    @Operation(summary = "创建短链", description = "同一 destUrl 恒生成同一短码；支持 destinations 多目标地址（每个目标一个 label，访问时用 X-Dest-Label 请求头选择）；"
+    @Operation(summary = "创建短链", description = "同一 destUrl 恒生成同一短码；支持 destinations 多目标地址（每个目标一个 label，访问时按 X-Client-Type/X-Platform 请求头与 User-Agent 设备类型选择）；"
             + "可自定义短码、设置访问密码、备注与过期时间")
     public ApiResponse<LinkResponse> create(@Valid @RequestBody CreateLinkRequest request) {
         return ApiResponse.ok(shortLinkService.create(request));
     }
 
     @GetMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}")
-    @Operation(summary = "查询短链信息", description = "多目标短链可通过 X-Dest-Label 请求头获取对应 destUrl（无匹配返回主目标）")
-    public ApiResponse<LinkResponse> info(@PathVariable String code,
-                                          @RequestHeader(value = WebUtil.DEST_LABEL_HEADER, required = false) String label) {
-        return ApiResponse.ok(shortLinkService.getInfo(code, label));
+    @Operation(summary = "查询短链信息", description = "多目标短链按 X-Client-Type/X-Platform 请求头与 User-Agent 设备类型（pc/mobile/tablet）解析 destUrl（无匹配返回主目标）")
+    public ApiResponse<LinkResponse> info(@PathVariable String code, HttpServletRequest request) {
+        return ApiResponse.ok(shortLinkService.getInfo(code, WebUtil.destLabels(request)));
     }
 
     @DeleteMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}")

@@ -3,7 +3,7 @@
 参考 [ohUrlShortener](https://github.com/badBoy-art/ohUrlShortener) 的短链设计思路，用 Java 重新实现的高可用、高并发短链服务：
 
 - **确定性短码**：`Base58(SHA-256(destUrl))` 前 6 位，同一 URL 恒生成同一短码；冲突时加盐重试，DB 唯一索引兜底
-- **多目标短链**：一个短码可绑定多个 destUrl，每个目标带一个 `label` 标识，访问/查询时通过 `X-Dest-Label` 请求头选择对应目标（PC 端、移动端各取所需），无请求头回退主目标，完全兼容旧单目标短链
+- **多目标短链**：一个短码可绑定多个 destUrl，每个目标带一个 `label` 标识，访问/查询时按 `X-Client-Type`/`X-Platform` 请求头与 User-Agent 设备类型（pc/mobile/tablet 三档）自动选择对应目标，无匹配回退主目标，完全兼容旧单目标短链
 - **三级读缓存**：Caffeine 本地缓存（热点直读内存）→ Redis → MySQL，Redis 故障自动降级直查 MySQL，重定向不中断
 - **异步写路径**：访问日志有界队列批量落库；点击计数 Redis INCR + GETDEL 原子批量回写，多实例不丢不重
 - **管理员体系**（与 ohUrlShortener 对齐）：JWT 登录 + 失败锁定、管理员账号管理、短链启用/停用/列表搜索、访问日志查询与 Excel 导出、昨日/近 7 天/本月多维统计
@@ -148,37 +148,51 @@ curl -X POST http://localhost/api/url \
 - `destUrl` 仅允许 http/https；`shortCode` 为 4-16 位 Base58 字符（不含 `0 O I l`），被占用返回 409
 - 同一 `destUrl` 重复创建返回同一短码（幂等），并发创建安全
 
-### 多目标短链（X-Dest-Label）
+### 多目标短链（自动按设备/客户端选择）
 
-一个短码可绑定多个 destUrl，每个目标带一个 `label` 标识；访问（`GET /{code}`、`POST /{code}/verify`）或查询信息（`GET /api/url/{code}`）时通过 `X-Dest-Label` 请求头指定想要的目标：
+一个短码可绑定多个 destUrl，每个目标带一个 `label` 标识；访问（`GET /{code}`、`POST /{code}/verify`）或查询信息（`GET /api/url/{code}`）时按以下优先级自动选择目标：
+
+1. `X-Client-Type` 请求头（App 等客户端自行设置，如 `app`、`wechat`）
+2. `X-Platform` 请求头（App 等客户端自行设置，如 `android`、`ios`、`ipad`）
+3. `User-Agent` 自动识别三档设备类型：平板（iPad 及 iPadOS 13+ 桌面模式）匹配 `tablet`，Android/iPhone 匹配 `mobile`，其余匹配 `pc`
+4. 均未命中时回退主目标 `destUrl`（未提供时取 destinations 第一个）
 
 ```bash
-# 创建：pc 与 mobile 各一个目标
+# 创建：pc、mobile、tablet 各一个目标
 curl -X POST http://localhost/api/url \
   -H 'Content-Type: application/json' \
   -d '{
     "destUrl": "https://www.example.com/pc/page",
     "destinations": [
       {"label": "pc",     "destUrl": "https://www.example.com/pc/page"},
-      {"label": "mobile", "destUrl": "https://m.example.com/page"}
+      {"label": "mobile", "destUrl": "https://m.example.com/page"},
+      {"label": "tablet", "destUrl": "https://pad.example.com/page"}
     ]
   }'
 
-# PC 端访问：请求头 X-Dest-Label: pc
-curl -i -H 'X-Dest-Label: pc' http://localhost/{code}      # 302 → https://www.example.com/pc/page
+# PC 浏览器：UA 自动识别为 pc
+curl -i -A 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126.0 Safari/537.36' \
+  http://localhost/{code}      # 302 → https://www.example.com/pc/page
 
-# 移动端访问：请求头 X-Dest-Label: mobile
-curl -i -H 'X-Dest-Label: mobile' http://localhost/{code}  # 302 → https://m.example.com/page
+# 手机浏览器：UA 自动识别为 mobile
+curl -i -A 'Mozilla/5.0 (Linux; Android/14) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36' \
+  http://localhost/{code}      # 302 → https://m.example.com/page
 
-# 不带请求头 → 回退主目标（destUrl 字段，未提供时取 destinations 第一个）
-curl -i http://localhost/{code}                            # 302 → https://www.example.com/pc/page
+# iPad 浏览器：UA 自动识别为 tablet
+curl -i -A 'Mozilla/5.0 (iPad/17.5; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1' \
+  http://localhost/{code}      # 302 → https://pad.example.com/page
+
+# App：通过 X-Client-Type / X-Platform 选择（值需与创建时的 label 一致）
+curl -i -H 'X-Client-Type: app' -H 'X-Platform: ios' http://localhost/{code}
 ```
 
-- 请求头 key 固定为 `X-Dest-Label`，value 为创建时指定的 `label`；value 无匹配时回退主目标，不报错
+- 浏览器默认不携带 `X-Client-Type` / `X-Platform`，浏览器场景靠 User-Agent 区分 `pc` / `mobile` / `tablet`；App 场景由客户端自行设置上述两个请求头，可精确区分「安卓 App / iOS App / 平板应用」
+- Android 平板与 Android 手机的 User-Agent 无法区分，平板应用请通过 `X-Platform` 标识
+- 候选标识无匹配时回退主目标，不报错
 - `destUrl` 与 `destinations` 至少提供一个；只提供 `destinations` 时第一个目标即主目标（决定短码与默认跳转）
 - 每个 `label` 在该短码内唯一，重复返回 400；最多 20 个目标
-- 老短链（单 destUrl）完全兼容：无 destinations 数据，请求头被忽略
-- 查询信息接口 `GET /api/url/{code}` 同样支持 `X-Dest-Label`，响应中 `destinations` 列出全部目标
+- 老短链（单 destUrl）完全兼容：无 destinations 数据，自动选择被忽略，始终跳主目标
+- 查询信息接口 `GET /api/url/{code}` 同样按上述优先级解析，响应中 `destinations` 列出全部目标
 
 ## 核心设计
 

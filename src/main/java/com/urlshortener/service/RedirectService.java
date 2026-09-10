@@ -22,9 +22,9 @@ public class RedirectService {
         return shortLinkService.findOptionalByCode(code);
     }
 
-    /** 按 X-Dest-Label 请求头解析目标地址：匹配多目标 label 返回对应目标，否则返回主目标（兼容旧短链） */
+    /** 按 X-Client-Type > X-Platform > User-Agent（pc/mobile/tablet）优先级解析目标地址，未命中回退主目标（兼容旧短链） */
     public String resolveDestUrl(ShortLink link, HttpServletRequest request) {
-        return shortLinkService.resolveDestUrl(link, request.getHeader(WebUtil.DEST_LABEL_HEADER));
+        return shortLinkService.resolveDestUrl(link, WebUtil.destLabels(request));
     }
 
     /** 记录访问日志（异步）+ 点击计数（Redis 原子自增、批量回写），均不影响主链路 */

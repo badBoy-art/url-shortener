@@ -39,7 +39,7 @@ public class RedirectController {
 
     @GetMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}")
     @Operation(summary = "访问短链",
-            description = "302 跳转目标地址；多目标短链可用 X-Dest-Label 请求头选择对应 destUrl（无匹配回退主目标）；"
+            description = "302 跳转目标地址；多目标短链按 X-Client-Type/X-Platform 请求头与 User-Agent 设备类型（pc/mobile/tablet）选择对应 destUrl（无匹配回退主目标）；"
                     + "密码保护链接返回验证页；打开方式不匹配返回提示页；过期/停用返回 410")
     public ResponseEntity<?> redirect(@PathVariable String code, HttpServletRequest request) {
         ShortLink link = validateLink(code);
@@ -57,7 +57,7 @@ public class RedirectController {
 
     @PostMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}/verify")
     @RateLimit
-    @Operation(summary = "密码验证", description = "验证页表单提交，密码正确则 302 跳转；支持 X-Dest-Label 请求头选择多目标")
+    @Operation(summary = "密码验证", description = "验证页表单提交，密码正确则 302 跳转；支持 X-Client-Type/X-Platform 请求头与 User-Agent 选择多目标")
     public ResponseEntity<?> verify(@PathVariable String code,
                                     @RequestParam("password") String password,
                                     HttpServletRequest request) {

@@ -26,6 +26,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class MultiDestIntegrationTest extends AbstractIntegrationTest {
 
+    private static final String PC_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    private static final String ANDROID_UA = "Mozilla/5.0 (Linux; Android/14; Pixel 8) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
+    private static final String IPAD_UA = "Mozilla/5.0 (iPad/17.5; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+            + "(KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
+    private static final String IPADOS_DESKTOP_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 "
+            + "(KHTML, like Gecko) Version/13.0 Safari/605.1.15 Mobile/15E148";
+
     @DynamicPropertySource
     static void multiDestProperties(DynamicPropertyRegistry registry) {
         registry.add("app.rate-limit.limit", () -> "1000");
@@ -49,30 +58,83 @@ class MultiDestIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void headerSelectsDestinationOnRedirect() throws Exception {
+    void deviceUaSelectsDestinationOnRedirect() throws Exception {
         String pc = "https://www.example.com/pc/page";
         String mobile = "https://m.example.com/page";
+        String tablet = "https://pad.example.com/page";
         String code = codeOf(create(Map.of(
                 "destUrl", pc,
                 "destinations", List.of(
                         Map.of("label", "pc", "destUrl", pc),
-                        Map.of("label", "mobile", "destUrl", mobile)))));
+                        Map.of("label", "mobile", "destUrl", mobile),
+                        Map.of("label", "tablet", "destUrl", tablet)))));
 
-        // 无 header：回退主目标
-        assertThat(rest.getForEntity("/" + code, String.class).getHeaders().getLocation())
+        // PC UA → pc 目标
+        assertThat(getWithHeaders("/" + code, Map.of(), PC_UA).getHeaders().getLocation())
                 .isEqualTo(URI.create(pc));
 
-        // header=pc → pc 目标
-        assertThat(getWithLabel("/" + code, "pc").getHeaders().getLocation())
-                .isEqualTo(URI.create(pc));
-
-        // header=mobile → 移动端目标
-        assertThat(getWithLabel("/" + code, "mobile").getHeaders().getLocation())
+        // Android UA → mobile 目标
+        assertThat(getWithHeaders("/" + code, Map.of(), ANDROID_UA).getHeaders().getLocation())
                 .isEqualTo(URI.create(mobile));
 
-        // header 值无匹配 → 回退主目标
-        assertThat(getWithLabel("/" + code, "tablet").getHeaders().getLocation())
+        // iPad UA → tablet 目标
+        assertThat(getWithHeaders("/" + code, Map.of(), IPAD_UA).getHeaders().getLocation())
+                .isEqualTo(URI.create(tablet));
+
+        // iPadOS 13+ 桌面模式 UA → tablet 目标
+        assertThat(getWithHeaders("/" + code, Map.of(), IPADOS_DESKTOP_UA).getHeaders().getLocation())
+                .isEqualTo(URI.create(tablet));
+    }
+
+    @Test
+    void appHeadersOverrideUaAndFallback() throws Exception {
+        String pc = "https://www.example.com/app-pc";
+        String mobile = "https://m.example.com/app-mobile";
+        String app = "https://app.example.com/launch";
+        String ios = "https://ios.example.com/launch";
+        String android = "https://android.example.com/launch";
+        String code = codeOf(create(Map.of(
+                "destUrl", pc,
+                "destinations", List.of(
+                        Map.of("label", "pc", "destUrl", pc),
+                        Map.of("label", "mobile", "destUrl", mobile),
+                        Map.of("label", "app", "destUrl", app),
+                        Map.of("label", "ios", "destUrl", ios),
+                        Map.of("label", "android", "destUrl", android)))));
+
+        // X-Client-Type 优先于 UA
+        assertThat(getWithHeaders("/" + code, Map.of("X-Client-Type", "app"), ANDROID_UA).getHeaders().getLocation())
+                .isEqualTo(URI.create(app));
+
+        // X-Platform 优先于 UA
+        assertThat(getWithHeaders("/" + code, Map.of("X-Platform", "ios"), ANDROID_UA).getHeaders().getLocation())
+                .isEqualTo(URI.create(ios));
+
+        // 未命中跳过继续匹配：wechat 未命中 → android 命中
+        assertThat(getWithHeaders("/" + code, Map.of("X-Client-Type", "wechat", "X-Platform", "android"), ANDROID_UA)
+                .getHeaders().getLocation()).isEqualTo(URI.create(android));
+
+        // 旧 X-Dest-Label 请求头已废弃：携带也不影响，按 UA 选择
+        assertThat(getWithHeaders("/" + code, Map.of("X-Dest-Label", "mobile"), PC_UA).getHeaders().getLocation())
                 .isEqualTo(URI.create(pc));
+    }
+
+    @Test
+    void fallbackToPrimaryWhenNoLabelMatches() throws Exception {
+        String primary = "https://www.example.com/fallback-primary";
+        String ios = "https://ios.example.com/fallback";
+        String code = codeOf(create(Map.of(
+                "destUrl", primary,
+                "destinations", List.of(
+                        Map.of("label", "ios", "destUrl", ios)))));
+
+        // PC UA 无匹配 label → 回退主目标
+        assertThat(getWithHeaders("/" + code, Map.of(), PC_UA).getHeaders().getLocation())
+                .isEqualTo(URI.create(primary));
+
+        // 命中 ios label → ios 目标
+        assertThat(getWithHeaders("/" + code, Map.of("X-Platform", "ios"), ANDROID_UA).getHeaders().getLocation())
+                .isEqualTo(URI.create(ios));
     }
 
     @Test
@@ -84,15 +146,15 @@ class MultiDestIntegrationTest extends AbstractIntegrationTest {
                         Map.of("label", "pc", "destUrl", pc),
                         Map.of("label", "mobile", "destUrl", mobile)))));
 
-        // 无 header：第一个目标为主目标
-        assertThat(rest.getForEntity("/" + code, String.class).getHeaders().getLocation())
+        // PC UA：第一个目标为主目标
+        assertThat(getWithHeaders("/" + code, Map.of(), PC_UA).getHeaders().getLocation())
                 .isEqualTo(URI.create(pc));
-        assertThat(getWithLabel("/" + code, "mobile").getHeaders().getLocation())
+        assertThat(getWithHeaders("/" + code, Map.of(), ANDROID_UA).getHeaders().getLocation())
                 .isEqualTo(URI.create(mobile));
     }
 
     @Test
-    void infoEndpointHonorsHeader() throws Exception {
+    void infoEndpointResolvesByHeaders() throws Exception {
         String pc = "https://www.example.com/info-pc";
         String mobile = "https://m.example.com/info-mobile";
         String code = codeOf(create(Map.of(
@@ -105,8 +167,9 @@ class MultiDestIntegrationTest extends AbstractIntegrationTest {
         assertThat(plain.get("destUrl").asText()).isEqualTo(pc);
         assertThat(plain.get("destinations").size()).isEqualTo(2);
 
+        // X-Platform + 移动 UA → destUrl 返回 mobile 目标
         JsonNode mobileInfo = dataOf(rest.exchange("/api/url/" + code, HttpMethod.GET,
-                new HttpEntity<>(labelHeaders("mobile")), String.class));
+                new HttpEntity<>(headersOf(Map.of("X-Platform", "mobile"), ANDROID_UA)), String.class));
         assertThat(mobileInfo.get("destUrl").asText()).isEqualTo(mobile);
         assertThat(mobileInfo.get("destinations").size()).isEqualTo(2);
     }
@@ -120,8 +183,8 @@ class MultiDestIntegrationTest extends AbstractIntegrationTest {
         assertThat(rest.getForEntity("/" + code, String.class).getHeaders().getLocation())
                 .isEqualTo(URI.create(dest));
 
-        // 带 header 也不影响（忽略，回退主目标）
-        assertThat(getWithLabel("/" + code, "pc").getHeaders().getLocation())
+        // 带 App 请求头也不影响（忽略，回退主目标）
+        assertThat(getWithHeaders("/" + code, Map.of("X-Client-Type", "pc"), PC_UA).getHeaders().getLocation())
                 .isEqualTo(URI.create(dest));
 
         // 查询信息正常，destinations 为 null/空
@@ -131,7 +194,7 @@ class MultiDestIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void passwordProtectedMultiDestVerifyHonorsHeader() throws Exception {
+    void passwordProtectedMultiDestVerifyHonorsHeaders() throws Exception {
         String pc = "https://www.example.com/secret-pc";
         String mobile = "https://m.example.com/secret-mobile";
         String code = codeOf(create(Map.of(
@@ -141,7 +204,7 @@ class MultiDestIntegrationTest extends AbstractIntegrationTest {
                         Map.of("label", "pc", "destUrl", pc),
                         Map.of("label", "mobile", "destUrl", mobile)))));
 
-        HttpHeaders headers = labelHeaders("mobile");
+        HttpHeaders headers = headersOf(Map.of("X-Platform", "mobile"), ANDROID_UA);
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
         ResponseEntity<String> ok = rest.exchange("/" + code + "/verify", HttpMethod.POST,
                 new HttpEntity<>("password=secret123", headers), String.class);
@@ -202,18 +265,21 @@ class MultiDestIntegrationTest extends AbstractIntegrationTest {
                 "destinations", List.of(
                         Map.of("label", "mobile", "destUrl", "https://m.example.com/del-multi")))));
         assertThat(again).isEqualTo(code);
-        assertThat(getWithLabel("/" + again, "mobile").getHeaders().getLocation())
+        assertThat(getWithHeaders("/" + again, Map.of(), ANDROID_UA).getHeaders().getLocation())
                 .isEqualTo(URI.create("https://m.example.com/del-multi"));
     }
 
-    private HttpHeaders labelHeaders(String label) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Dest-Label", label);
-        return headers;
+    private HttpHeaders headersOf(Map<String, String> headers, String ua) {
+        HttpHeaders h = new HttpHeaders();
+        headers.forEach(h::set);
+        if (ua != null) {
+            h.set("User-Agent", ua);
+        }
+        return h;
     }
 
-    private ResponseEntity<String> getWithLabel(String path, String label) {
-        return rest.exchange(path, HttpMethod.GET, new HttpEntity<>(labelHeaders(label)), String.class);
+    private ResponseEntity<String> getWithHeaders(String path, Map<String, String> headers, String ua) {
+        return rest.exchange(path, HttpMethod.GET, new HttpEntity<>(headersOf(headers, ua)), String.class);
     }
 
     private ResponseEntity<String> create(Map<String, Object> body) {

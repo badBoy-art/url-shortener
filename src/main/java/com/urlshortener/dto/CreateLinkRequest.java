@@ -11,12 +11,12 @@ import java.util.List;
 
 @Schema(description = "创建短链请求")
 public record CreateLinkRequest(
-        @Schema(description = "主目标长地址（http/https）；仅提供 destinations 时可留空，此时取 destinations 中第一个作为主目标（用于短码生成与无 X-Dest-Label 请求头时的默认跳转）",
+        @Schema(description = "主目标长地址（http/https）；仅提供 destinations 时可留空，此时取 destinations 中第一个作为主目标（用于短码生成与无匹配标识时的默认跳转）",
                 example = "https://www.example.com/very/long/path?a=1")
         @Size(max = 2048, message = "destUrl 长度不能超过 2048")
         String destUrl,
 
-        @Schema(description = "多目标地址列表：每个目标一个 label 标识，访问时通过 X-Dest-Label 请求头选择；与 destUrl 至少提供一个")
+        @Schema(description = "多目标地址列表：每个目标一个 label 标识，访问时按 X-Client-Type/X-Platform 请求头与 User-Agent 设备类型（pc/mobile/tablet）自动选择；与 destUrl 至少提供一个")
         @Valid
         @Size(max = 20, message = "destinations 最多 20 个")
         List<DestInfo> destinations,

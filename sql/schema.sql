@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS t_admin_user (
 CREATE TABLE IF NOT EXISTS t_short_link_dest (
     id         BIGINT AUTO_INCREMENT PRIMARY KEY,
     short_code VARCHAR(16)   NOT NULL COMMENT '短码',
-    label      VARCHAR(64)   NOT NULL COMMENT '目标标识（访问时通过 X-Dest-Label 请求头选择）',
+    label      VARCHAR(64)   NOT NULL COMMENT '目标标识（X-Client-Type/X-Platform 请求头取值或设备类型 pc/mobile/tablet）',
     dest_url   VARCHAR(2048) NOT NULL COMMENT '目标地址',
     created_at DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_code_label (short_code, label),

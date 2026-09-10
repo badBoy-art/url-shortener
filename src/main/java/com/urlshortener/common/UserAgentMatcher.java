@@ -11,6 +11,7 @@ public final class UserAgentMatcher {
     private static final Pattern ANDROID = Pattern.compile("(?i)Android/[\\d.]+");
     private static final Pattern IPHONE = Pattern.compile("(?i)iPhone/[\\d.]+");
     private static final Pattern IPAD = Pattern.compile("(?i)iPad/[\\d.]+");
+    private static final Pattern TABLET = Pattern.compile("(?i)(iPad/[\\d.]+|Macintosh.*Mobile/[\\d.]+)");
     private static final Pattern WECHAT = Pattern.compile("(?i)MicroMessenger/[\\d.]+");
     private static final Pattern DINGTALK = Pattern.compile("(?i)DingTalk/[\\d.]+");
     private static final Pattern SAFARI = Pattern.compile("(?i)Version/[\\d.]+ Safari/[\\d.]+");
@@ -30,6 +31,22 @@ public final class UserAgentMatcher {
 
     public static boolean isIPad(String ua) {
         return matches(IPAD, ua);
+    }
+
+    /** iPad 原生 UA，或 iPadOS 13+ 桌面模式 UA（Macintosh 平台 + Mobile 标记） */
+    public static boolean isTablet(String ua) {
+        return matches(TABLET, ua);
+    }
+
+    /** 根据浏览器默认携带的 User-Agent 识别设备类型，返回三档标识：tablet / mobile / pc */
+    public static String deviceLabel(String ua) {
+        if (isTablet(ua)) {
+            return WebUtil.LABEL_TABLET;
+        }
+        if (isAndroid(ua) || isIPhone(ua)) {
+            return WebUtil.LABEL_MOBILE;
+        }
+        return WebUtil.LABEL_PC;
     }
 
     public static boolean isWeChat(String ua) {

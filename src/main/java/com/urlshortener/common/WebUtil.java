@@ -2,12 +2,41 @@ package com.urlshortener.common;
 
 import jakarta.servlet.http.HttpServletRequest;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public final class WebUtil {
 
-    /** 多目标短链选择请求头：值为创建短链时给每个 destUrl 指定的 label，匹配则跳转对应目标 */
-    public static final String DEST_LABEL_HEADER = "X-Dest-Label";
+    /** 客户端类型请求头：由 App 等客户端自行设置（如 app、wechat），浏览器不会携带 */
+    public static final String CLIENT_TYPE_HEADER = "X-Client-Type";
+    /** 客户端平台请求头：由 App 等客户端自行设置（如 android、ios、ipad），浏览器不会携带 */
+    public static final String PLATFORM_HEADER = "X-Platform";
+
+    /** 无上述请求头（如浏览器访问）时，根据 User-Agent 自动识别设备类型所用的标识 */
+    public static final String LABEL_PC = "pc";
+    public static final String LABEL_MOBILE = "mobile";
+    public static final String LABEL_TABLET = "tablet";
 
     private WebUtil() {
+    }
+
+    /**
+     * 组装目标地址标识的匹配优先级：
+     * X-Client-Type > X-Platform > User-Agent 自动识别（pc/mobile/tablet）
+     */
+    public static List<String> destLabels(HttpServletRequest request) {
+        List<String> labels = new ArrayList<>(3);
+        appendHeader(labels, request, CLIENT_TYPE_HEADER);
+        appendHeader(labels, request, PLATFORM_HEADER);
+        labels.add(UserAgentMatcher.deviceLabel(request.getHeader("User-Agent")));
+        return labels;
+    }
+
+    private static void appendHeader(List<String> labels, HttpServletRequest request, String name) {
+        String value = request.getHeader(name);
+        if (value != null && !value.isBlank()) {
+            labels.add(value);
+        }
     }
 
     public static String clientIp(HttpServletRequest request) {

@@ -60,7 +60,7 @@ public class ShortLinkService {
         return createWithGeneratedCode(request, destUrl);
     }
 
-    /** 主目标地址：destUrl 字段优先，否则取 destinations 中第一个；用于短码生成与无 X-Dest-Label 请求头时的默认跳转 */
+    /** 主目标地址：destUrl 字段优先，否则取 destinations 中第一个；用于短码生成与无匹配标识时的默认跳转 */
     private String resolvePrimaryDestUrl(CreateLinkRequest request) {
         boolean hasDestUrl = request.destUrl() != null && !request.destUrl().isBlank();
         List<DestInfo> dests = request.destinations() == null ? List.of() : request.destinations();
@@ -212,22 +212,28 @@ public class ShortLinkService {
                 .orElseThrow(() -> BusinessException.notFound("短链 " + code + " 不存在"));
     }
 
-    public LinkResponse getInfo(String code) {
-        return getInfo(code, null);
-    }
-
-    /** 查询短链信息：label 命中多目标则 destUrl 返回对应目标，否则返回主目标（兼容旧短链） */
-    public LinkResponse getInfo(String code, String label) {
+    /** 查询短链信息：多目标短链按候选标识优先级解析 destUrl，无匹配返回主目标（兼容旧短链） */
+    public LinkResponse getInfo(String code, List<String> labels) {
         ShortLink link = getOrThrow(code);
-        return LinkResponse.from(link, props.baseUrl(), resolveDestUrl(link, label));
+        return LinkResponse.from(link, props.baseUrl(), resolveDestUrl(link, labels));
     }
 
-    /** 按 X-Dest-Label 请求头解析目标地址：匹配 label 返回对应目标，无匹配/无请求头返回主目标 */
-    public String resolveDestUrl(ShortLink link, String label) {
-        if (label != null && !label.isBlank() && link.getDestinations() != null) {
-            String target = link.getDestinations().get(label.trim());
-            if (target != null) {
-                return target;
+    /** 按优先级依次尝试给定的目标标识，命中即返回对应目标地址；全部未命中（或标识为空）时回退主目标 */
+    public String resolveDestUrl(ShortLink link, List<String> labels) {
+        Map<String, String> dests = link.getDestinations();
+        if (labels != null && dests != null) {
+            for (String label : labels) {
+                if (label == null) {
+                    continue;
+                }
+                String key = label.trim();
+                if (key.isEmpty()) {
+                    continue;
+                }
+                String target = dests.get(key);
+                if (target != null && !target.isBlank()) {
+                    return target;
+                }
             }
         }
         return link.getDestUrl();
