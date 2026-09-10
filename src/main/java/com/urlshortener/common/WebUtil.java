@@ -17,6 +17,10 @@ public final class WebUtil {
     public static final String SEC_CH_UA_PLATFORM_HEADER = "Sec-CH-UA-Platform";
     public static final String SEC_CH_UA_MODEL_HEADER = "Sec-CH-UA-Model";
 
+    /** Accept-CH 响应头：声明本服务需要的 Client Hints，浏览器收到后在后续请求中携带 Sec-CH-UA-* */
+    public static final String ACCEPT_CH_HEADER = "Accept-CH";
+    public static final String ACCEPT_CH_VALUE = "Sec-CH-UA-Mobile, Sec-CH-UA-Platform, Sec-CH-UA-Model";
+
     /** 无上述请求头（如浏览器访问）时，根据 User-Agent 自动识别设备类型所用的标识 */
     public static final String LABEL_PC = "pc";
     public static final String LABEL_MOBILE = "mobile";

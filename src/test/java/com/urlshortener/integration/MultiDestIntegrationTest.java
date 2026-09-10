@@ -2,6 +2,7 @@ package com.urlshortener.integration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.urlshortener.common.WebUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -226,6 +227,29 @@ class MultiDestIntegrationTest extends AbstractIntegrationTest {
         JsonNode info = dataOf(rest.getForEntity("/api/url/" + code, String.class));
         assertThat(info.get("destUrl").asText()).isEqualTo(dest);
         assertThat(info.get("destinations").isNull() || info.get("destinations").isEmpty()).isTrue();
+    }
+
+    @Test
+    void redirectAdvertisesAcceptCH() throws Exception {
+        String dest = "https://www.example.com/accept-ch";
+        String code = codeOf(create(Map.of("destUrl", dest)));
+
+        // 302 响应声明 Accept-CH，浏览器收到后在后续请求中携带 Sec-CH-UA-*
+        ResponseEntity<String> resp = getWithHeaders("/" + code, Map.of(), PC_UA);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.FOUND);
+        assertThat(resp.getHeaders().getFirst(WebUtil.ACCEPT_CH_HEADER))
+                .isEqualTo(WebUtil.ACCEPT_CH_VALUE);
+
+        // 密码保护短链验证成功后同样声明
+        String secretCode = codeOf(create(Map.of("destUrl", "https://www.example.com/accept-ch-secret",
+                "password", "secret123")));
+        HttpHeaders headers = headersOf(Map.of(), PC_UA);
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        ResponseEntity<String> ok = rest.exchange("/" + secretCode + "/verify", HttpMethod.POST,
+                new HttpEntity<>("password=secret123", headers), String.class);
+        assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.FOUND);
+        assertThat(ok.getHeaders().getFirst(WebUtil.ACCEPT_CH_HEADER))
+                .isEqualTo(WebUtil.ACCEPT_CH_VALUE);
     }
 
     @Test

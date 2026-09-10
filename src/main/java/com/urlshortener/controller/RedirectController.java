@@ -2,6 +2,7 @@ package com.urlshortener.controller;
 
 import com.urlshortener.common.BusinessException;
 import com.urlshortener.common.UserAgentMatcher;
+import com.urlshortener.common.WebUtil;
 import com.urlshortener.entity.ShortLink;
 import com.urlshortener.ratelimit.RateLimit;
 import com.urlshortener.service.RedirectService;
@@ -39,8 +40,8 @@ public class RedirectController {
 
     @GetMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}")
     @Operation(summary = "访问短链",
-            description = "302 跳转目标地址；多目标短链按 X-Client-Type/X-Platform 请求头与 User-Agent 设备类型（pc/mobile/tablet）选择对应 destUrl（无匹配回退主目标）；"
-                    + "密码保护链接返回验证页；打开方式不匹配返回提示页；过期/停用返回 410")
+            description = "302 跳转目标地址；多目标短链按 X-Client-Type/X-Platform 请求头、Sec-CH-UA-* Client Hints 与 User-Agent 设备类型（pc/mobile/tablet）选择对应 destUrl（无匹配回退主目标）；"
+                    + "密码保护链接返回验证页；打开方式不匹配返回提示页；过期/停用返回 410；响应带 Accept-CH 头声明所需 Client Hints")
     public ResponseEntity<?> redirect(@PathVariable String code, HttpServletRequest request) {
         ShortLink link = validateLink(code);
         String destUrl = redirectService.resolveDestUrl(link, request);
@@ -52,12 +53,14 @@ public class RedirectController {
             return unsupportedPage(code);
         }
         redirectService.recordVisit(code, request);
-        return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(destUrl)).build();
+        return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(destUrl))
+                .header(WebUtil.ACCEPT_CH_HEADER, WebUtil.ACCEPT_CH_VALUE)
+                .build();
     }
 
     @PostMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}/verify")
     @RateLimit
-    @Operation(summary = "密码验证", description = "验证页表单提交，密码正确则 302 跳转；支持 X-Client-Type/X-Platform 请求头与 User-Agent 选择多目标")
+    @Operation(summary = "密码验证", description = "验证页表单提交，密码正确则 302 跳转；支持 X-Client-Type/X-Platform 请求头、Sec-CH-UA-* Client Hints 与 User-Agent 选择多目标；响应带 Accept-CH 头声明所需 Client Hints")
     public ResponseEntity<?> verify(@PathVariable String code,
                                     @RequestParam("password") String password,
                                     HttpServletRequest request) {
@@ -68,7 +71,9 @@ public class RedirectController {
                 return unsupportedPage(code);
             }
             redirectService.recordVisit(code, request);
-            return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(destUrl)).build();
+            return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(destUrl))
+                    .header(WebUtil.ACCEPT_CH_HEADER, WebUtil.ACCEPT_CH_VALUE)
+                    .build();
         }
         return ResponseEntity.badRequest().contentType(MediaType.TEXT_HTML)
                 .body(render("verify.html", code, "密码错误，请重试"));
