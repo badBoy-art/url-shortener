@@ -19,6 +19,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -121,11 +122,30 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
                 "description", "keyword-hit-alpha")));
         codeOf(create(Map.of("destUrl", "https://www.example.com/admin-list-2",
                 "description", "beta-page")));
+        String multiCode = codeOf(create(Map.of(
+                "destUrl", "https://www.example.com/admin-list-default",
+                "destinations", List.of(
+                        Map.of("label", "pc", "destUrl", "https://www.example.com/admin-list-pc"),
+                        Map.of("label", "mobile", "destUrl", "https://m.example.com/admin-list-m")))));
         String token = tokenOf(login("admin", "ohUrlShortener", null));
 
         JsonNode all = dataOf(rest.exchange("/api/urls?page=1&size=50", HttpMethod.GET,
                 new HttpEntity<>(bearer(token)), String.class));
-        assertThat(all.get("total").asLong()).isGreaterThanOrEqualTo(2);
+        assertThat(all.get("total").asLong()).isGreaterThanOrEqualTo(3);
+
+        JsonNode multi = null;
+        for (JsonNode item : all.get("list")) {
+            if (multiCode.equals(item.get("shortCode").asText())) {
+                multi = item;
+                break;
+            }
+        }
+        assertThat(multi).isNotNull();
+        assertThat(multi.get("destUrl").asText()).isEqualTo("https://www.example.com/admin-list-default");
+        assertThat(multi.get("destinations").size()).isEqualTo(2);
+        assertThat(multi.get("destinations").toString())
+                .contains("admin-list-pc")
+                .contains("admin-list-m");
 
         JsonNode hit = dataOf(rest.exchange("/api/urls?keyword=keyword-hit", HttpMethod.GET,
                 new HttpEntity<>(bearer(token)), String.class));
