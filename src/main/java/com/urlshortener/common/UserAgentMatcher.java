@@ -1,51 +1,28 @@
 package com.urlshortener.common;
 
 import java.util.Locale;
-import java.util.regex.Pattern;
 
 /**
- * 打开方式（open_type）UA 判定，规则与 ohUrlShortener utils/useragent.go 保持一致。
+ * 打开方式（open_type）客户端判定，规则与 ohUrlShortener utils/useragent.go 保持一致。
  * 0 全部 1 微信 2 钉钉 3 iPhone 4 Android 5 iPad 6 Safari 7 Chrome 8 Firefox
+ *
+ * @deprecated 设备/浏览器识别已由 {@link com.urlshortener.service.UserAgentAnalysisService} 接管；
+ *             仅保留 Client Hints 三段判断作为文档参考。
  */
+@Deprecated
 public final class UserAgentMatcher {
-
-    // 兼容新旧 UA 格式：Android/4.1.2（旧）与 Android 14（新）
-    private static final Pattern ANDROID = Pattern.compile("(?i)Android[/ ][\\d.]+");
-    // 兼容新旧 UA 格式：iPhone/12.1（旧）与 iPhone; CPU iPhone OS 17_5（新）
-    private static final Pattern IPHONE = Pattern.compile("(?i)iPhone[/;]");
-    // 兼容新旧 UA 格式：iPad/17.0（旧）与 iPad; CPU OS 17_5（新）
-    private static final Pattern IPAD = Pattern.compile("(?i)iPad[/;]");
-    private static final Pattern TABLET = Pattern.compile("(?i)(iPad[/;]|Macintosh.*Mobile/[\\d.]+)");
-    private static final Pattern WECHAT = Pattern.compile("(?i)MicroMessenger/[\\d.]+");
-    private static final Pattern DINGTALK = Pattern.compile("(?i)DingTalk/[\\d.]+");
-    private static final Pattern SAFARI = Pattern.compile("(?i)Version/[\\d.]+ Safari/[\\d.]+");
-    private static final Pattern CHROME = Pattern.compile("(?i)Chrome/[\\d.]+ Safari");
-    private static final Pattern FIREFOX = Pattern.compile("(?i)Firefox/[\\d.]+");
 
     private UserAgentMatcher() {
     }
 
-    public static boolean isAndroid(String ua) {
-        return matches(ANDROID, ua);
-    }
-
-    public static boolean isIPhone(String ua) {
-        return matches(IPHONE, ua);
-    }
-
-    public static boolean isIPad(String ua) {
-        return matches(IPAD, ua);
-    }
-
-    /** iPad 原生 UA，或 iPadOS 13+ 桌面模式 UA（Macintosh 平台 + Mobile 标记） */
-    public static boolean isTablet(String ua) {
-        return matches(TABLET, ua);
-    }
-
     /**
      * 根据浏览器 Client Hints 请求头识别设备类型三档；
-     * 信息不足无法判断时返回 {@link DeviceTier#UNKNOWN}，调用方应回退到 User-Agent 识别。
+     * 信息不足无法判断时返回 {@link DeviceTier#UNKNOWN}。
+     *
+     * @deprecated 设备三档已由 {@link com.urlshortener.service.UserAgentAnalysisService#deviceTier(java.util.Map)} 接管，
+     *             Yauaa 自动合并 Client Hints 与 User-Agent 一次解析。
      */
+    @Deprecated
     public static DeviceTier deviceTierFromHints(String mobileHint, String platformHint, String modelHint) {
         String platform = unquote(trimToEmpty(platformHint).toLowerCase(Locale.ROOT));
         String model = unquote(trimToEmpty(modelHint)).toLowerCase(Locale.ROOT);
@@ -88,17 +65,6 @@ public final class UserAgentMatcher {
         return DeviceTier.UNKNOWN;
     }
 
-    /** 根据 User-Agent 正则识别设备类型三档，识别不出时归为 PC */
-    public static DeviceTier deviceTierFromUA(String ua) {
-        if (isTablet(ua)) {
-            return DeviceTier.TABLET;
-        }
-        if (isAndroid(ua) || isIPhone(ua)) {
-            return DeviceTier.MOBILE;
-        }
-        return DeviceTier.PC;
-    }
-
     private static String unquote(String s) {
         int start = 0;
         int end = s.length();
@@ -113,48 +79,5 @@ public final class UserAgentMatcher {
 
     private static String trimToEmpty(String s) {
         return s == null ? "" : s.trim();
-    }
-
-    public static boolean isWeChat(String ua) {
-        return matches(WECHAT, ua);
-    }
-
-    public static boolean isDingTalk(String ua) {
-        return matches(DINGTALK, ua);
-    }
-
-    public static boolean isSafari(String ua) {
-        return matches(SAFARI, ua);
-    }
-
-    public static boolean isChrome(String ua) {
-        return matches(CHROME, ua);
-    }
-
-    public static boolean isFirefox(String ua) {
-        return matches(FIREFOX, ua);
-    }
-
-    /** openType 为 0（全部）或未知值时放行 */
-    public static boolean matches(int openType, String ua) {
-        if (ua == null || ua.isEmpty()) {
-            return false;
-        }
-        return switch (openType) {
-            case 0 -> true;
-            case 1 -> isWeChat(ua);
-            case 2 -> isDingTalk(ua);
-            case 3 -> isIPhone(ua);
-            case 4 -> isAndroid(ua);
-            case 5 -> isIPad(ua);
-            case 6 -> isSafari(ua);
-            case 7 -> isChrome(ua);
-            case 8 -> isFirefox(ua);
-            default -> true;
-        };
-    }
-
-    private static boolean matches(Pattern pattern, String ua) {
-        return ua != null && pattern.matcher(ua).find();
     }
 }

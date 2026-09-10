@@ -1,11 +1,11 @@
 package com.urlshortener.controller;
 
 import com.urlshortener.common.BusinessException;
-import com.urlshortener.common.UserAgentMatcher;
 import com.urlshortener.common.WebUtil;
 import com.urlshortener.entity.ShortLink;
 import com.urlshortener.ratelimit.RateLimit;
 import com.urlshortener.service.RedirectService;
+import com.urlshortener.service.UserAgentAnalysisService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,6 +26,8 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -35,6 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RedirectController {
 
     private final RedirectService redirectService;
+    private final UserAgentAnalysisService uaService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final Map<String, String> templateCache = new ConcurrentHashMap<>();
 
@@ -93,7 +96,10 @@ public class RedirectController {
 
     private boolean openTypeRejected(ShortLink link, HttpServletRequest request) {
         int openType = link.getOpenType() == null ? 0 : link.getOpenType();
-        return !UserAgentMatcher.matches(openType, request.getHeader("User-Agent"));
+        Map<String, String> headers = new HashMap<>();
+        Collections.list(request.getHeaderNames())
+                .forEach(name -> headers.put(name, request.getHeader(name)));
+        return !uaService.matchesOpenType(openType, headers);
     }
 
     private ResponseEntity<String> unsupportedPage(String code) {

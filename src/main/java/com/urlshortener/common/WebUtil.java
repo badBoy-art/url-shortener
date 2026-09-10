@@ -1,9 +1,13 @@
 package com.urlshortener.common;
 
+import com.urlshortener.service.UserAgentAnalysisService;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class WebUtil {
 
@@ -11,11 +15,6 @@ public final class WebUtil {
     public static final String CLIENT_TYPE_HEADER = "X-Client-Type";
     /** 客户端平台请求头：由 App 等客户端自行设置（如 android、ios、ipad），浏览器不会携带 */
     public static final String PLATFORM_HEADER = "X-Platform";
-
-    /** 浏览器 Client Hints 请求头（Chromium 系浏览器在站点声明 Accept-CH 后发送，Safari 暂不支持） */
-    public static final String SEC_CH_UA_MOBILE_HEADER = "Sec-CH-UA-Mobile";
-    public static final String SEC_CH_UA_PLATFORM_HEADER = "Sec-CH-UA-Platform";
-    public static final String SEC_CH_UA_MODEL_HEADER = "Sec-CH-UA-Model";
 
     /** Accept-CH 响应头：声明本服务需要的 Client Hints，浏览器收到后在后续请求中携带 Sec-CH-UA-* */
     public static final String ACCEPT_CH_HEADER = "Accept-CH";
@@ -31,34 +30,30 @@ public final class WebUtil {
 
     /**
      * 组装目标地址标识的匹配优先级：
-     * X-Client-Type > X-Platform > Client Hints / User-Agent 自动识别（pc/mobile/tablet）
+     * X-Client-Type > X-Platform > Yauaa（Client Hints + User-Agent 合并推断，pc/mobile/tablet）
      */
-    public static List<String> destLabels(HttpServletRequest request) {
+    public static List<String> destLabels(HttpServletRequest request, UserAgentAnalysisService uaService) {
         List<String> labels = new ArrayList<>(3);
         appendHeader(labels, request, CLIENT_TYPE_HEADER);
         appendHeader(labels, request, PLATFORM_HEADER);
-        labels.add(deviceLabel(request));
+        labels.add(deviceLabel(request, uaService));
         return labels;
     }
 
-    /**
-     * 优先根据浏览器 Client Hints（Sec-CH-UA-*）识别设备类型，
-     * 未携带或信息不足时回退到 User-Agent 正则识别，返回三档标识：
-     * tablet（iPad / iPadOS 桌面模式）/ mobile（Android、iPhone）/ pc（其余）
-     */
-    private static String deviceLabel(HttpServletRequest request) {
-        DeviceTier tier = UserAgentMatcher.deviceTierFromHints(
-                request.getHeader(SEC_CH_UA_MOBILE_HEADER),
-                request.getHeader(SEC_CH_UA_PLATFORM_HEADER),
-                request.getHeader(SEC_CH_UA_MODEL_HEADER));
-        if (tier == DeviceTier.UNKNOWN) {
-            tier = UserAgentMatcher.deviceTierFromUA(request.getHeader("User-Agent"));
-        }
-        return switch (tier) {
+    /** 收集全部请求头为 Map，传给 Yauaa 一次性解析 User-Agent + Client Hints 后返回设备三档标识 */
+    private static String deviceLabel(HttpServletRequest request, UserAgentAnalysisService uaService) {
+        return switch (uaService.deviceTier(headerMap(request))) {
             case TABLET -> LABEL_TABLET;
             case MOBILE -> LABEL_MOBILE;
             default -> LABEL_PC;
         };
+    }
+
+    private static Map<String, String> headerMap(HttpServletRequest request) {
+        Map<String, String> map = new HashMap<>();
+        Collections.list(request.getHeaderNames())
+                .forEach(name -> map.put(name, request.getHeader(name)));
+        return map;
     }
 
     private static void appendHeader(List<String> labels, HttpServletRequest request, String name) {

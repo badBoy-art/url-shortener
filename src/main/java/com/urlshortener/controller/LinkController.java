@@ -9,6 +9,7 @@ import com.urlshortener.ratelimit.ApiKeyRequired;
 import com.urlshortener.ratelimit.RateLimit;
 import com.urlshortener.service.AdminLinkService;
 import com.urlshortener.service.ShortLinkService;
+import com.urlshortener.service.UserAgentAnalysisService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,6 +32,7 @@ public class LinkController {
 
     private final ShortLinkService shortLinkService;
     private final AdminLinkService adminLinkService;
+    private final UserAgentAnalysisService uaService;
 
     @PostMapping
     @RateLimit
@@ -43,7 +45,7 @@ public class LinkController {
     @GetMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}")
     @Operation(summary = "查询短链信息", description = "多目标短链按 X-Client-Type/X-Platform 请求头与 User-Agent 设备类型（pc/mobile/tablet）解析 destUrl（无匹配返回主目标）")
     public ApiResponse<LinkResponse> info(@PathVariable String code, HttpServletRequest request) {
-        return ApiResponse.ok(shortLinkService.getInfo(code, WebUtil.destLabels(request)));
+        return ApiResponse.ok(shortLinkService.getInfo(code, WebUtil.destLabels(request, uaService)));
     }
 
     @DeleteMapping("/{code:[1-9A-HJ-NP-Za-km-z]{4,16}}")
