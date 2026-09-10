@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -19,6 +20,9 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Map;
 
@@ -45,6 +49,9 @@ class MultiDestIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     ObjectMapper objectMapper;
+
+    @LocalServerPort
+    int port;
 
     @BeforeEach
     void disableRedirectFollowing() {
@@ -84,6 +91,34 @@ class MultiDestIntegrationTest extends AbstractIntegrationTest {
         // iPadOS 13+ 桌面模式 UA → tablet 目标
         assertThat(getWithHeaders("/" + code, Map.of(), IPADOS_DESKTOP_UA).getHeaders().getLocation())
                 .isEqualTo(URI.create(tablet));
+    }
+
+    @Test
+    void clientHintsSelectDestinationOnRedirect() throws Exception {
+        String pc = "https://www.example.com/ch-pc";
+        String tablet = "https://pad.example.com/ch-tablet";
+        String code = codeOf(create(Map.of(
+                "destUrl", pc,
+                "destinations", List.of(
+                        Map.of("label", "pc", "destUrl", pc),
+                        Map.of("label", "tablet", "destUrl", tablet)))));
+
+        // Client Hints（Sec-CH-UA-Platform: iPadOS）优先于 PC UA → tablet 目标。
+        // 注：TestRestTemplate 底层 HttpURLConnection 会静默丢弃 Sec-* 请求头，此处改用 JDK HttpClient
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + port + "/" + code))
+                .header("Sec-CH-UA-Mobile", "?0")
+                .header("Sec-CH-UA-Platform", "\"iPadOS\"")
+                .header("User-Agent", PC_UA)
+                .GET()
+                .build();
+        HttpResponse<Void> response = HttpClient.newBuilder().build()
+                .send(request, HttpResponse.BodyHandlers.discarding());
+        assertThat(response.headers().firstValue("Location")).hasValue(tablet);
+
+        // 无 Client Hints 时回退 UA：PC UA → pc 目标
+        assertThat(getWithHeaders("/" + code, Map.of(), PC_UA).getHeaders().getLocation())
+                .isEqualTo(URI.create(pc));
     }
 
     @Test

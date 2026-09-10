@@ -3,7 +3,7 @@
 参考 [ohUrlShortener](https://github.com/badBoy-art/ohUrlShortener) 的短链设计思路，用 Java 重新实现的高可用、高并发短链服务：
 
 - **确定性短码**：`Base58(SHA-256(destUrl))` 前 6 位，同一 URL 恒生成同一短码；冲突时加盐重试，DB 唯一索引兜底
-- **多目标短链**：一个短码可绑定多个 destUrl，每个目标带一个 `label` 标识，访问/查询时按 `X-Client-Type`/`X-Platform` 请求头与 User-Agent 设备类型（pc/mobile/tablet 三档）自动选择对应目标，无匹配回退主目标，完全兼容旧单目标短链
+- **多目标短链**：一个短码可绑定多个 destUrl，每个目标带一个 `label` 标识，访问/查询时按 `X-Client-Type`/`X-Platform` 请求头、浏览器 Client Hints 与 User-Agent 设备类型（pc/mobile/tablet 三档）自动选择对应目标，无匹配回退主目标，完全兼容旧单目标短链
 - **三级读缓存**：Caffeine 本地缓存（热点直读内存）→ Redis → MySQL，Redis 故障自动降级直查 MySQL，重定向不中断
 - **异步写路径**：访问日志有界队列批量落库；点击计数 Redis INCR + GETDEL 原子批量回写，多实例不丢不重
 - **管理员体系**（与 ohUrlShortener 对齐）：JWT 登录 + 失败锁定、管理员账号管理、短链启用/停用/列表搜索、访问日志查询与 Excel 导出、昨日/近 7 天/本月多维统计
@@ -154,17 +154,27 @@ curl -X POST http://localhost/api/url \
 
 1. `X-Client-Type` 请求头（App 等客户端自行设置，如 `app`、`wechat`）
 2. `X-Platform` 请求头（App 等客户端自行设置，如 `android`、`ios`、`ipad`）
-3. `User-Agent` 自动识别三档设备类型：平板（iPad 及 iPadOS 13+ 桌面模式）匹配 `tablet`，Android/iPhone 匹配 `mobile`，其余匹配 `pc`
+3. 浏览器 Client Hints（`Sec-CH-UA-*`，Chromium 系浏览器自动携带）识别三档设备类型；未携带或信息不足时回退 `User-Agent` 正则识别：平板匹配 `tablet`（iPad / iPadOS 13+ 桌面模式；`Sec-CH-UA-Mobile: ?0` 的 iOS 请求亦视为平板），Android/iPhone 匹配 `mobile`，其余匹配 `pc`
 4. 均未命中时回退主目标 `destUrl`（未提供时取 destinations 第一个）
 
 #### 请求头字段说明
 
-App 等可控客户端可通过以下两个自设请求头精确选择目标（浏览器不会携带，浏览器场景自动落入 User-Agent 三档）：
+App 等可控客户端可通过以下两个自设请求头精确选择目标（浏览器不会携带）：
 
 | 请求头 | 用途 | 示例取值 | 设置方 |
 |---|---|---|---|
 | `X-Client-Type` | 客户端类型标识，优先级最高 | `app`、`wechat`、`dingtalk` | App 等客户端自行设置 |
 | `X-Platform` | 客户端平台标识 | `android`、`ios`、`ipad` | App 等客户端自行设置 |
+
+浏览器场景优先使用 Client Hints（Chromium 系浏览器自动携带，Safari 暂不支持，故保留 User-Agent 正则兜底）：
+
+| 请求头 | 用途 | 示例取值 | 设置方 |
+|---|---|---|---|
+| `Sec-CH-UA-Mobile` | 是否移动设备 | `?1`、`?0` | 浏览器自动携带 |
+| `Sec-CH-UA-Platform` | 平台标识 | `"iOS"`、`"iPadOS"`、`"Android"`、`"macOS"`、`"Windows"` | 浏览器自动携带 |
+| `Sec-CH-UA-Model` | 设备型号（移动设备） | `"iPhone 15"`、`"Pixel 8"`、`"iPad13,4"` | 浏览器自动携带 |
+
+Client Hints 识别规则：`iPadOS` 平台 → `tablet`；`iOS` 平台在 `Sec-CH-UA-Mobile: ?0`（iPad 桌面模式）或型号含 iPad 时 → `tablet`，否则 → `mobile`；`Android` → `mobile`（平板与手机无法区分）；`macOS`/`Windows`/`Linux`/`Chrome OS` → `pc`（型号含 iPad 时仍判 `tablet`，覆盖 iPadOS 桌面模式上报 `macOS` 的情况）。
 
 创建多目标短链时按下列 label 约定即可覆盖六类常见场景：
 
@@ -173,11 +183,11 @@ App 等可控客户端可通过以下两个自设请求头精确选择目标（�
 | 安卓 App | `X-Client-Type` / `X-Platform` | `app` / `android` |
 | iOS App | `X-Client-Type` / `X-Platform` | `app` / `ios` |
 | 平板应用 | `X-Platform`（Android 平板 UA 与手机无法区分，必须携带） | `ipad` |
-| PC 网页 | User-Agent 自动识别 | `pc` |
-| 手机 H5 | User-Agent 自动识别 | `mobile` |
-| 平板网页 | User-Agent 自动识别（iPad / iPadOS 13+ 桌面模式） | `tablet` |
+| PC 网页 | Client Hints / User-Agent 自动识别 | `pc` |
+| 手机 H5 | Client Hints / User-Agent 自动识别 | `mobile` |
+| 平板网页 | Client Hints / User-Agent 自动识别（iPad / iPadOS 13+ 桌面模式） | `tablet` |
 
-候选标识按优先级依次尝试：`X-Client-Type` 未命中时继续尝试 `X-Platform`，再未命中按 User-Agent 三档匹配，全部未命中回退主目标。
+候选标识按优先级依次尝试：`X-Client-Type` 未命中时继续尝试 `X-Platform`，再未命中按浏览器 Client Hints 识别三档，Client Hints 缺失时按 User-Agent 三档匹配，全部未命中回退主目标。
 
 ```bash
 # 创建：pc、mobile、tablet 各一个目标
@@ -204,12 +214,17 @@ curl -i -A 'Mozilla/5.0 (Linux; Android/14) AppleWebKit/537.36 Chrome/126.0 Mobi
 curl -i -A 'Mozilla/5.0 (iPad/17.5; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1' \
   http://localhost/{code}      # 302 → https://pad.example.com/page
 
+# Chromium 浏览器：Client Hints 优先（Sec-CH-UA-Platform: iPadOS → tablet，即使 UA 是 PC 形态）
+curl -i -H 'Sec-CH-UA-Mobile: ?0' -H 'Sec-CH-UA-Platform: "iPadOS"' \
+  -A 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126.0 Safari/537.36' \
+  http://localhost/{code}      # 302 → https://pad.example.com/page
+
 # App：通过 X-Client-Type / X-Platform 选择（值需与创建时的 label 一致）
 curl -i -H 'X-Client-Type: app' -H 'X-Platform: ios' http://localhost/{code}
 ```
 
-- 浏览器默认不携带 `X-Client-Type` / `X-Platform`，浏览器场景靠 User-Agent 区分 `pc` / `mobile` / `tablet`；App 场景由客户端自行设置上述两个请求头，可精确区分「安卓 App / iOS App / 平板应用」
-- Android 平板与 Android 手机的 User-Agent 无法区分，平板应用请通过 `X-Platform` 标识
+- 浏览器默认不携带 `X-Client-Type` / `X-Platform`，浏览器场景优先用 Client Hints（`Sec-CH-UA-*`）识别，不支持时回退 User-Agent 区分 `pc` / `mobile` / `tablet`；App 场景由客户端自行设置上述两个请求头，可精确区分「安卓 App / iOS App / 平板应用」
+- Android 平板与 Android 手机的 User-Agent / Client Hints 均无法区分，平板应用请通过 `X-Platform` 标识
 - 候选标识无匹配时回退主目标，不报错
 - `destUrl` 与 `destinations` 至少提供一个；只提供 `destinations` 时第一个目标即主目标（决定短码与默认跳转）
 - 每个 `label` 在该短码内唯一，重复返回 400；最多 20 个目标
@@ -282,7 +297,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/amazon-corretto-21.jdk/Conten
 mvn test   # 需本机 Docker 运行（Testcontainers 拉起 MySQL/Redis）
 ```
 
-覆盖：Base58/短码生成/UA 判定单元测试；集成测试（Testcontainers）覆盖创建/重定向/幂等/自定义码冲突/非法 URL/404/410/密码流程/并发创建同码/统计/限流 429/管理员登录与失败锁定/管理接口鉴权/短链启停/打开方式定向/日志查询与 Excel 导出/管理员账号管理。
+覆盖：Base58/短码生成/UA 与 Client Hints 判定单元测试；集成测试（Testcontainers）覆盖创建/重定向/幂等/自定义码冲突/非法 URL/404/410/密码流程/并发创建同码/统计/限流 429/管理员登录与失败锁定/管理接口鉴权/短链启停/打开方式定向/日志查询与 Excel 导出/管理员账号管理。
 
 ## 压测
 
